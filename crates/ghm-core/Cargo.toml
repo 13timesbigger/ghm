@@ -1,0 +1,27 @@
+[package]
+name = "ghm-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Core library for GitHub Monitor - GitHub API client, config, storage, and daemon logic"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+octocrab = "0.44"
+reqwest = { version = "0.12", features = ["json"] }
+dirs = "6"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util", "macros"] }
+wiremock = "0.6"
