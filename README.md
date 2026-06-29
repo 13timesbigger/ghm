@@ -10,12 +10,22 @@ A background daemon and CLI tool for observing GitHub repositories for new pull 
 
 ## Installation
 
-Build the binary using Cargo:
+Install the `ghm` binary into `/usr/local/bin`:
+```bash
+./install.sh
+```
+
+To install somewhere else, pass `--dir` or set `INSTALL_DIR`:
+```bash
+./install.sh --dir "$HOME/.local/bin"
+```
+
+You can also build the binary manually using Cargo:
 ```bash
 cargo build --release
 ```
 
-The binary will be located at `target/release/ghm`. You may want to copy it to your `PATH` (e.g., `/usr/local/bin`).
+The binary will be located at `target/release/ghm`.
 
 ## Usage
 
