@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use dialoguer::{Input, Password, Select};
+use dialoguer::{Password, Select};
 use tokio::time::{sleep, Duration, Instant};
 
 use ghad_core::github::auth::{
@@ -10,6 +10,7 @@ use ghad_core::models::AuthMethod;
 use crate::output;
 
 const DEVICE_CLIENT_ID_ENV: &str = "GHAD_GITHUB_CLIENT_ID";
+const DEFAULT_DEVICE_CLIENT_ID: &str = "Iv23liLPhwgYwYeBHjoX";
 const DEVICE_FLOW_SCOPES: &str = "repo read:org read:project";
 
 /// Handle the `ghad auth configure` command.
@@ -73,7 +74,7 @@ async fn configure_pat() -> Result<()> {
 
 /// Configure authentication via GitHub Device Flow.
 async fn configure_device_flow() -> Result<()> {
-    let client_id = resolve_device_client_id()?;
+    let client_id = resolve_device_client_id();
 
     let sp = output::spinner("Initiating GitHub Device Flow...");
     let device = match request_device_code(&client_id, DEVICE_FLOW_SCOPES).await {
@@ -144,31 +145,16 @@ async fn configure_device_flow() -> Result<()> {
     anyhow::bail!("GitHub Device Flow timed out. Run 'ghad auth configure' again.");
 }
 
-fn resolve_device_client_id() -> Result<String> {
+fn resolve_device_client_id() -> String {
     if let Some(client_id) = std::env::var(DEVICE_CLIENT_ID_ENV)
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
     {
-        return Ok(client_id);
+        return client_id;
     }
 
-    println!("\nGitHub Device Flow requires a GitHub OAuth App client ID.");
-    println!("Use the OAuth App client ID, not the client secret.");
-    println!("Device Flow must also be enabled in the app settings.");
-    println!("You can set the client ID with {DEVICE_CLIENT_ID_ENV}.\n");
-
-    let client_id: String = Input::new()
-        .with_prompt("Enter your GitHub OAuth App client ID")
-        .interact_text()
-        .context("Failed to read GitHub OAuth app client ID")?;
-
-    let client_id = client_id.trim().to_string();
-    if client_id.is_empty() {
-        anyhow::bail!("GitHub OAuth app client ID cannot be empty");
-    }
-
-    Ok(client_id)
+    DEFAULT_DEVICE_CLIENT_ID.to_string()
 }
 
 fn save_token(token: &str, auth_method: AuthMethod) -> Result<()> {
