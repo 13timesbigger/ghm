@@ -42,6 +42,8 @@ ghm auth configure
 ```
 This will save your configuration to `~/.config/ghm/config.json`.
 
+GitHub Device Flow is also available when `GHM_GITHUB_CLIENT_ID` is set to a GitHub OAuth app client ID.
+
 ### Listing Resources
 You can list resources from GitHub using the CLI:
 ```bash

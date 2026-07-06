@@ -1,9 +1,15 @@
 use anyhow::{Context, Result};
-use dialoguer::{Input, Select};
+use dialoguer::{Password, Select};
+use tokio::time::{sleep, Duration, Instant};
 
-use ghm_core::config::load_default_config;
+use ghm_core::github::auth::{
+    poll_device_token, request_device_code, validate_pat_format, verify_pat,
+};
+use ghm_core::models::AuthMethod;
 
 use crate::output;
+
+const DEVICE_CLIENT_ID_ENV: &str = "GHM_GITHUB_CLIENT_ID";
 
 /// Handle the `ghm auth configure` command.
 ///
@@ -11,7 +17,16 @@ use crate::output;
 pub async fn handle_configure() -> Result<()> {
     println!("🔐 GitHub Monitor — Authentication Setup\n");
 
-    let methods = vec!["Personal Access Token (PAT)", "GitHub Device Flow (OAuth)"];
+    let device_client_id = std::env::var(DEVICE_CLIENT_ID_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+
+    let methods = if device_client_id.is_some() {
+        vec!["Personal Access Token (PAT)", "GitHub Device Flow (OAuth)"]
+    } else {
+        vec!["Personal Access Token (PAT)"]
+    };
+
     let selection = Select::new()
         .with_prompt("Select authentication method")
         .items(&methods)
@@ -21,7 +36,10 @@ pub async fn handle_configure() -> Result<()> {
 
     match selection {
         0 => configure_pat().await,
-        1 => configure_device_flow().await,
+        1 => {
+            configure_device_flow(&device_client_id.expect("device flow option requires client ID"))
+                .await
+        }
         _ => unreachable!(),
     }
 }
@@ -33,51 +51,111 @@ async fn configure_pat() -> Result<()> {
     println!("  • read:org (Read org membership)");
     println!("  • read:project (Read project boards)\n");
 
-    let token: String = Input::new()
+    let token: String = Password::new()
         .with_prompt("Enter your GitHub Personal Access Token")
-        .interact_text()
+        .interact()
         .context("Failed to read token input")?;
 
     if token.trim().is_empty() {
         anyhow::bail!("Token cannot be empty");
     }
 
+    validate_pat_format(token.trim()).context("Invalid GitHub Personal Access Token")?;
+
     let sp = output::spinner("Validating token...");
+    let login = match verify_pat(token.trim()).await {
+        Ok(login) => login,
+        Err(err) => {
+            sp.finish_and_clear();
+            return Err(err).context("GitHub rejected the provided token");
+        }
+    };
 
-    // Load or create config, save token
-    let mut config = ghm_core::config::load_default_config().unwrap_or_default();
-    config.github_token = Some(token);
-
-    let config_dir = ghm_core::config::default_config_dir()?;
-    std::fs::create_dir_all(&config_dir)?;
-    
-    // Save it (assuming save implementation exists or we just serialize)
-    let config_path = ghm_core::config::default_config_path()?;
-    let json = serde_json::to_string_pretty(&config)?;
-    std::fs::write(&config_path, json)?;
+    save_token(token.trim(), AuthMethod::PersonalAccessToken)?;
 
     sp.finish_and_clear();
-    output::print_success("Authentication successful!");
-    output::print_info(&format!(
-        "Configuration saved to {}",
-        config_path.display()
-    ));
+    output::print_success(&format!("Authentication successful for @{login}!"));
+
+    let config_path = ghm_core::config::default_config_path()?;
+    output::print_info(&format!("Configuration saved to {}", config_path.display()));
 
     Ok(())
 }
 
 /// Configure authentication via GitHub Device Flow.
-async fn configure_device_flow() -> Result<()> {
+async fn configure_device_flow(client_id: &str) -> Result<()> {
     let sp = output::spinner("Initiating GitHub Device Flow...");
-
-    // In a real implementation, this would call ghm_core::github::auth::device_flow()
-    // For now, we show the flow structure
+    let device = match request_device_code(client_id).await {
+        Ok(device) => device,
+        Err(err) => {
+            sp.finish_and_clear();
+            return Err(err).context("Failed to start GitHub Device Flow");
+        }
+    };
     sp.finish_and_clear();
 
-    output::print_info("Device Flow authentication is not yet implemented.");
-    output::print_info("Please use a Personal Access Token instead.");
-    output::print_info("Run: ghm auth configure");
+    output::print_info("Open this URL in your browser:");
+    println!("{}", device.verification_uri);
+    output::print_info("Enter this code:");
+    println!("{}", device.user_code);
+    output::print_info("Waiting for GitHub authorization...");
 
-    Ok(())
+    let deadline = Instant::now() + Duration::from_secs(device.expires_in);
+    let mut interval = Duration::from_secs(device.interval.max(1));
+    let sp = output::spinner("Waiting for authorization...");
+
+    while Instant::now() < deadline {
+        sleep(interval).await;
+
+        let token_response = match poll_device_token(client_id, &device.device_code).await {
+            Ok(response) => response,
+            Err(err) => {
+                sp.finish_and_clear();
+                return Err(err).context("Failed while polling GitHub Device Flow");
+            }
+        };
+
+        if let Some(token) = token_response.access_token {
+            save_token(&token, AuthMethod::DeviceFlow)?;
+            sp.finish_and_clear();
+
+            let config_path = ghm_core::config::default_config_path()?;
+            output::print_success("Authentication successful!");
+            output::print_info(&format!("Configuration saved to {}", config_path.display()));
+            return Ok(());
+        }
+
+        match token_response.error.as_deref() {
+            Some("authorization_pending") => {}
+            Some("slow_down") => interval += Duration::from_secs(5),
+            Some("expired_token") => {
+                sp.finish_and_clear();
+                anyhow::bail!("GitHub Device Flow code expired. Run 'ghm auth configure' again.");
+            }
+            Some("access_denied") => {
+                sp.finish_and_clear();
+                anyhow::bail!("GitHub Device Flow authorization was denied.");
+            }
+            Some(error) => {
+                sp.finish_and_clear();
+                let description = token_response
+                    .error_description
+                    .unwrap_or_else(|| "No error description provided".to_string());
+                anyhow::bail!("GitHub Device Flow failed: {error}: {description}");
+            }
+            None => {}
+        }
+    }
+
+    sp.finish_and_clear();
+    anyhow::bail!("GitHub Device Flow timed out. Run 'ghm auth configure' again.");
 }
 
+fn save_token(token: &str, auth_method: AuthMethod) -> Result<()> {
+    let mut config = ghm_core::config::load_default_config().unwrap_or_default();
+    config.github_token = Some(token.to_string());
+    config.auth_method = auth_method;
+
+    ghm_core::config::save_default_config(&config).context("Failed to save GitHub credentials")?;
+    Ok(())
+}
