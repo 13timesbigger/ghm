@@ -74,13 +74,13 @@ pub struct DeviceTokenResponse {
 }
 
 /// Request a device code from GitHub for the OAuth Device Flow.
-pub async fn request_device_code(client_id: &str) -> Result<DeviceCodeResponse> {
+pub async fn request_device_code(client_id: &str, scope: &str) -> Result<DeviceCodeResponse> {
     let client = reqwest::Client::new();
     let resp = client
         .post("https://github.com/login/device/code")
         .header("Accept", "application/json")
         .header("User-Agent", "ghm-core")
-        .form(&[("client_id", client_id), ("scope", "repo,read:org")])
+        .form(&[("client_id", client_id), ("scope", scope)])
         .send()
         .await
         .map_err(|e| GhmError::DeviceFlow {
@@ -101,10 +101,7 @@ pub async fn request_device_code(client_id: &str) -> Result<DeviceCodeResponse> 
 }
 
 /// Poll GitHub for the access token during device flow.
-pub async fn poll_device_token(
-    client_id: &str,
-    device_code: &str,
-) -> Result<DeviceTokenResponse> {
+pub async fn poll_device_token(client_id: &str, device_code: &str) -> Result<DeviceTokenResponse> {
     let client = reqwest::Client::new();
     let resp = client
         .post("https://github.com/login/oauth/access_token")
@@ -113,10 +110,7 @@ pub async fn poll_device_token(
         .form(&[
             ("client_id", client_id),
             ("device_code", device_code),
-            (
-                "grant_type",
-                "urn:ietf:params:oauth:grant-type:device_code",
-            ),
+            ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
         ])
         .send()
         .await
@@ -220,8 +214,7 @@ mod tests {
             .and(path("/user"))
             .and(header("Authorization", "Bearer ghp_test"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({"login": "testuser"})),
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"login": "testuser"})),
             )
             .mount(&server)
             .await;
@@ -253,9 +246,10 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/user"))
-            .respond_with(ResponseTemplate::new(401).set_body_json(
-                serde_json::json!({"message": "Bad credentials"}),
-            ))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .set_body_json(serde_json::json!({"message": "Bad credentials"})),
+            )
             .mount(&server)
             .await;
 

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use dialoguer::{Password, Select};
+use dialoguer::{Input, Password, Select};
 use tokio::time::{sleep, Duration, Instant};
 
 use ghm_core::github::auth::{
@@ -10,6 +10,7 @@ use ghm_core::models::AuthMethod;
 use crate::output;
 
 const DEVICE_CLIENT_ID_ENV: &str = "GHM_GITHUB_CLIENT_ID";
+const DEVICE_FLOW_SCOPES: &str = "repo read:org read:project";
 
 /// Handle the `ghm auth configure` command.
 ///
@@ -17,16 +18,7 @@ const DEVICE_CLIENT_ID_ENV: &str = "GHM_GITHUB_CLIENT_ID";
 pub async fn handle_configure() -> Result<()> {
     println!("🔐 GitHub Monitor — Authentication Setup\n");
 
-    let device_client_id = std::env::var(DEVICE_CLIENT_ID_ENV)
-        .ok()
-        .filter(|value| !value.trim().is_empty());
-
-    let methods = if device_client_id.is_some() {
-        vec!["Personal Access Token (PAT)", "GitHub Device Flow (OAuth)"]
-    } else {
-        vec!["Personal Access Token (PAT)"]
-    };
-
+    let methods = vec!["Personal Access Token (PAT)", "GitHub Device Flow (OAuth)"];
     let selection = Select::new()
         .with_prompt("Select authentication method")
         .items(&methods)
@@ -36,10 +28,7 @@ pub async fn handle_configure() -> Result<()> {
 
     match selection {
         0 => configure_pat().await,
-        1 => {
-            configure_device_flow(&device_client_id.expect("device flow option requires client ID"))
-                .await
-        }
+        1 => configure_device_flow().await,
         _ => unreachable!(),
     }
 }
@@ -83,9 +72,11 @@ async fn configure_pat() -> Result<()> {
 }
 
 /// Configure authentication via GitHub Device Flow.
-async fn configure_device_flow(client_id: &str) -> Result<()> {
+async fn configure_device_flow() -> Result<()> {
+    let client_id = resolve_device_client_id()?;
+
     let sp = output::spinner("Initiating GitHub Device Flow...");
-    let device = match request_device_code(client_id).await {
+    let device = match request_device_code(&client_id, DEVICE_FLOW_SCOPES).await {
         Ok(device) => device,
         Err(err) => {
             sp.finish_and_clear();
@@ -107,7 +98,7 @@ async fn configure_device_flow(client_id: &str) -> Result<()> {
     while Instant::now() < deadline {
         sleep(interval).await;
 
-        let token_response = match poll_device_token(client_id, &device.device_code).await {
+        let token_response = match poll_device_token(&client_id, &device.device_code).await {
             Ok(response) => response,
             Err(err) => {
                 sp.finish_and_clear();
@@ -149,6 +140,31 @@ async fn configure_device_flow(client_id: &str) -> Result<()> {
 
     sp.finish_and_clear();
     anyhow::bail!("GitHub Device Flow timed out. Run 'ghm auth configure' again.");
+}
+
+fn resolve_device_client_id() -> Result<String> {
+    if let Some(client_id) = std::env::var(DEVICE_CLIENT_ID_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(client_id);
+    }
+
+    println!("\nGitHub Device Flow requires a GitHub OAuth app client ID.");
+    println!("You can also set it with {DEVICE_CLIENT_ID_ENV}.\n");
+
+    let client_id: String = Input::new()
+        .with_prompt("Enter your GitHub OAuth app client ID")
+        .interact_text()
+        .context("Failed to read GitHub OAuth app client ID")?;
+
+    let client_id = client_id.trim().to_string();
+    if client_id.is_empty() {
+        anyhow::bail!("GitHub OAuth app client ID cannot be empty");
+    }
+
+    Ok(client_id)
 }
 
 fn save_token(token: &str, auth_method: AuthMethod) -> Result<()> {
