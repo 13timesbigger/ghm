@@ -36,13 +36,26 @@ The binary will be located at `target/release/ghad`.
 ## Usage
 
 ### Authentication
-Before doing anything else, authenticate with GitHub using a Personal Access Token (PAT):
+Before doing anything else, authenticate with GitHub:
 ```bash
 ghad auth configure
 ```
 This will save your configuration to `~/.config/ghad/config.json`.
 
-GitHub Device Flow is also supported. Select it during `ghad auth configure` to authenticate with the built-in OAuth App client ID. Set `GHAD_GITHUB_CLIENT_ID` before running the command to use a different OAuth App.
+`ghad auth configure` supports:
+- **Personal Access Token (PAT)**: use this if you want to provide your own GitHub token.
+- **GitHub App Installation**: use this if you want GitHub to prompt for the account, organization, and repositories to grant to GHAAD.
+
+For GitHub App installation auth, create a GitHub App with the repository permissions GHAAD needs, then run `ghad auth configure` and select `GitHub App Installation`. The command opens the GitHub App installation page in your default browser so you can choose the account or organization and either all repositories or selected repositories.
+
+You can prefill the interactive prompts with environment variables:
+```bash
+export GHAD_GITHUB_APP_SLUG="your-app-slug"
+export GHAD_GITHUB_APP_ID="123456"
+export GHAD_GITHUB_APP_PRIVATE_KEY_PATH="$HOME/.config/ghad/private-key.pem"
+export GHAD_GITHUB_APP_INSTALLATION_ID="987654"
+ghad auth configure
+```
 
 ### Listing Resources
 You can list resources from GitHub using the CLI:
@@ -56,10 +69,10 @@ ghad pr list --repo myorg/myrepo
 ghad issue list --org myorg
 ```
 
-Repository and organization listing requires GitHub OAuth scopes that match the data
-you want to read. The built-in Device Flow requests `repo`, `read:org`, and
-`read:project` so GHAAD can read private repositories, organization memberships,
-and GitHub Projects where the organization permits the OAuth app.
+With GitHub App installation auth, `ghad repo list` shows repositories granted to
+the selected installation. With PAT auth, repository and organization listing
+requires GitHub scopes that match the data you want to read: `repo`, `read:org`,
+and `read:project`.
 
 ### Observation and Agents
 To add a repository to the watch list:

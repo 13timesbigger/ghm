@@ -46,8 +46,8 @@ pub enum OutputFormat {
 pub enum Commands {
     /// Manage authentication credentials for the GitHub API.
     ///
-    /// Configure your Personal Access Token (PAT), or use the GitHub Device Flow.
-    /// Your token is stored in the local configuration directory.
+    /// Configure a Personal Access Token (PAT), or use a GitHub App installation.
+    /// Your credentials are stored in the local configuration directory.
     #[command(subcommand)]
     Auth(AuthCommands),
 
@@ -131,10 +131,10 @@ pub enum Commands {
 pub enum AuthCommands {
     /// Configure GitHub authentication credentials.
     ///
-    /// Interactively set up your GitHub Personal Access Token (PAT), or use
-    /// the GitHub Device Flow. The token is stored in ~/.config/ghad/config.json.
+    /// Interactively set up a GitHub Personal Access Token (PAT), or configure
+    /// a GitHub App installation. Credentials are stored in the ghad config file.
     ///
-    /// Required scopes: repo, read:org, read:project
+    /// PAT scopes: repo, read:org, read:project
     Configure,
 }
 

@@ -640,6 +640,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "dirs",
+ "jsonwebtoken",
  "octocrab",
  "reqwest",
  "serde",

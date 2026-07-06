@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 pub enum AuthMethod {
     PersonalAccessToken,
     DeviceFlow,
+    GitHubAppInstallation,
 }
 
 impl Default for AuthMethod {
@@ -57,6 +58,26 @@ pub struct AgentPaths {
     pub copilot: Option<PathBuf>,
 }
 
+/// GitHub App installation credentials and selected installation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GitHubAppConfig {
+    pub app_slug: String,
+    pub app_id: u64,
+    pub private_key_path: PathBuf,
+    pub installation_id: u64,
+}
+
+/// A GitHub App installation that can be selected during authentication setup.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GitHubAppInstallation {
+    pub id: u64,
+    pub account_login: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository_selection: Option<String>,
+}
+
 // ── Config ─────────────────────────────────────────────────────────
 
 /// Application configuration stored in `~/.config/ghad/config.json`.
@@ -67,6 +88,9 @@ pub struct Config {
 
     #[serde(default)]
     pub auth_method: AuthMethod,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub github_app: Option<GitHubAppConfig>,
 
     #[serde(default = "default_poll_interval")]
     pub default_poll_interval_secs: u64,
@@ -87,6 +111,7 @@ impl Default for Config {
         Self {
             github_token: None,
             auth_method: AuthMethod::default(),
+            github_app: None,
             default_poll_interval_secs: default_poll_interval(),
             default_working_dir: None,
             agent_paths: AgentPaths::default(),
@@ -291,6 +316,12 @@ mod tests {
         let df = AuthMethod::DeviceFlow;
         let json = serde_json::to_string(&df).unwrap();
         assert_eq!(json, "\"device_flow\"");
+
+        let app = AuthMethod::GitHubAppInstallation;
+        let json = serde_json::to_string(&app).unwrap();
+        assert_eq!(json, "\"git_hub_app_installation\"");
+        let back: AuthMethod = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, app);
     }
 
     // ── AgentType ──────────────────────────────────────────────────
@@ -363,6 +394,7 @@ mod tests {
         let c = Config::default();
         assert!(c.github_token.is_none());
         assert_eq!(c.auth_method, AuthMethod::PersonalAccessToken);
+        assert!(c.github_app.is_none());
         assert_eq!(c.default_poll_interval_secs, 30);
         assert!(c.default_working_dir.is_none());
     }
@@ -372,6 +404,7 @@ mod tests {
         let c = Config {
             github_token: Some("ghp_test123".into()),
             auth_method: AuthMethod::DeviceFlow,
+            github_app: None,
             default_poll_interval_secs: 60,
             default_working_dir: Some(PathBuf::from("/tmp/work")),
             agent_paths: AgentPaths {
@@ -380,6 +413,25 @@ mod tests {
             },
         };
         let json = serde_json::to_string_pretty(&c).unwrap();
+        let back: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, c);
+    }
+
+    #[test]
+    fn config_github_app_roundtrip() {
+        let c = Config {
+            auth_method: AuthMethod::GitHubAppInstallation,
+            github_app: Some(GitHubAppConfig {
+                app_slug: "github-activity-to-agents-dispatcher".into(),
+                app_id: 12345,
+                private_key_path: PathBuf::from("/tmp/ghad.pem"),
+                installation_id: 67890,
+            }),
+            ..Default::default()
+        };
+        let json = serde_json::to_string_pretty(&c).unwrap();
+        assert!(json.contains("git_hub_app_installation"));
+        assert!(json.contains("installation_id"));
         let back: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(back, c);
     }

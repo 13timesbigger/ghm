@@ -108,6 +108,7 @@ mod tests {
         let config = Config {
             github_token: Some("ghp_abc123".into()),
             auth_method: AuthMethod::DeviceFlow,
+            github_app: None,
             default_poll_interval_secs: 45,
             default_working_dir: Some(PathBuf::from("/projects")),
             agent_paths: AgentPaths {

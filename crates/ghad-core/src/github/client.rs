@@ -1,11 +1,13 @@
 use crate::error::{GhadError, Result};
+use crate::models::{AuthMethod, Config, GitHubAppInstallation};
+use std::path::Path;
 
-/// A thin wrapper around `octocrab::Octocrab` that constructs the client
-/// from a personal access token.
+/// A thin wrapper around `octocrab::Octocrab` that tracks the configured auth mode.
 #[derive(Clone)]
 pub struct GithubClient {
     inner: octocrab::Octocrab,
     token: String,
+    auth_method: AuthMethod,
 }
 
 impl std::fmt::Debug for GithubClient {
@@ -28,16 +30,43 @@ impl GithubClient {
         Ok(Self {
             inner: octocrab,
             token: token.to_string(),
+            auth_method: AuthMethod::PersonalAccessToken,
         })
     }
 
     /// Create a client from a `Config`, pulling the token from it.
-    pub fn from_config(config: &crate::models::Config) -> Result<Self> {
-        let token = config
-            .github_token
-            .as_deref()
-            .ok_or(GhadError::TokenMissing)?;
-        Self::new(token)
+    pub fn from_config(config: &Config) -> Result<Self> {
+        match config.auth_method {
+            AuthMethod::GitHubAppInstallation => Self::from_github_app_config(config),
+            AuthMethod::PersonalAccessToken | AuthMethod::DeviceFlow => {
+                let token = config
+                    .github_token
+                    .as_deref()
+                    .ok_or(GhadError::TokenMissing)?;
+                Self::new(token)
+            }
+        }
+    }
+
+    fn from_github_app_config(config: &Config) -> Result<Self> {
+        let app = config
+            .github_app
+            .as_ref()
+            .ok_or_else(|| GhadError::ConfigInvalid {
+                message: "GitHub App installation auth is selected, but github_app config is missing".into(),
+            })?;
+        let app_client = build_github_app_client(app.app_id, &app.private_key_path)?;
+        let installation_client = app_client
+            .installation(octocrab::models::InstallationId(app.installation_id))
+            .map_err(|e| GhadError::GitHubApi {
+                message: format!("failed to build GitHub App installation client: {e}"),
+            })?;
+
+        Ok(Self {
+            inner: installation_client,
+            token: String::new(),
+            auth_method: AuthMethod::GitHubAppInstallation,
+        })
     }
 
     /// Get a reference to the inner Octocrab instance.
@@ -48,6 +77,11 @@ impl GithubClient {
     /// Get the token (useful for raw HTTP calls).
     pub fn token(&self) -> &str {
         &self.token
+    }
+
+    /// Whether the client uses GitHub App installation authentication.
+    pub fn is_github_app_installation(&self) -> bool {
+        self.auth_method == AuthMethod::GitHubAppInstallation
     }
 
     /// Make a raw GraphQL query and return the JSON response.
@@ -83,6 +117,59 @@ impl GithubClient {
         })?;
         Ok(result)
     }
+}
+
+/// Build an Octocrab client authenticated as a GitHub App.
+pub fn build_github_app_client(app_id: u64, private_key_path: &Path) -> Result<octocrab::Octocrab> {
+    let private_key =
+        std::fs::read(private_key_path).map_err(|e| GhadError::ConfigRead { source: e })?;
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(&private_key).map_err(|e| {
+        GhadError::ConfigInvalid {
+            message: format!(
+                "failed to read GitHub App private key '{}': {e}",
+                private_key_path.display()
+            ),
+        }
+    })?;
+    octocrab::Octocrab::builder()
+        .app(octocrab::models::AppId(app_id), key)
+        .build()
+        .map_err(|e| GhadError::GitHubApi {
+            message: format!("failed to build GitHub App client: {e}"),
+        })
+}
+
+/// List installations for the authenticated GitHub App.
+pub async fn list_github_app_installations(
+    app_id: u64,
+    private_key_path: &Path,
+) -> Result<Vec<GitHubAppInstallation>> {
+    let app_client = build_github_app_client(app_id, private_key_path)?;
+    let page = app_client
+        .apps()
+        .installations()
+        .per_page(100)
+        .send()
+        .await
+        .map_err(|e| GhadError::GitHubApi {
+            message: format!("failed to list GitHub App installations: {e}"),
+        })?;
+    let installations = app_client
+        .all_pages(page)
+        .await
+        .map_err(|e| GhadError::GitHubApi {
+            message: format!("failed to paginate GitHub App installations: {e}"),
+        })?;
+
+    Ok(installations
+        .into_iter()
+        .map(|installation| GitHubAppInstallation {
+            id: installation.id.into_inner(),
+            account_login: installation.account.login,
+            target_type: installation.target_type,
+            repository_selection: installation.repository_selection,
+        })
+        .collect())
 }
 
 #[cfg(test)]

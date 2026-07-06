@@ -5,6 +5,10 @@ use octocrab::params;
 
 /// List all repositories accessible to the authenticated user.
 pub async fn list_repos(client: &GithubClient) -> Result<Vec<GithubRepo>> {
+    if client.is_github_app_installation() {
+        return list_installation_repos(client).await;
+    }
+
     let page = client
         .octocrab()
         .current()
@@ -28,6 +32,34 @@ pub async fn list_repos(client: &GithubClient) -> Result<Vec<GithubRepo>> {
         })?;
 
     Ok(map_repos(repos))
+}
+
+async fn list_installation_repos(client: &GithubClient) -> Result<Vec<GithubRepo>> {
+    let mut all_repos = Vec::new();
+    let mut page = 1;
+
+    loop {
+        let route = format!("/installation/repositories?per_page=100&page={page}");
+        let response: octocrab::models::InstallationRepositories = client
+            .octocrab()
+            .get(route, None::<&()>)
+            .await
+            .map_err(|e| GhadError::GitHubApi {
+                message: format!(
+                    "failed to list GitHub App installation repos: {}",
+                    octocrab_error_message(&e)
+                ),
+            })?;
+        let count = response.repositories.len();
+        all_repos.extend(response.repositories);
+
+        if count < 100 {
+            break;
+        }
+        page += 1;
+    }
+
+    Ok(map_repos(all_repos))
 }
 
 /// List repositories belonging to a specific organisation.

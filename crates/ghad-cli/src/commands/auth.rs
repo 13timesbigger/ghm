@@ -1,19 +1,18 @@
 use anyhow::{Context, Result};
-use dialoguer::{Password, Select};
-use std::collections::BTreeSet;
+use dialoguer::{Input, Password, Select};
+use std::path::Path;
 use std::process::Command;
-use tokio::time::{sleep, Duration, Instant};
 
-use ghad_core::github::auth::{
-    poll_device_token, request_device_code, validate_pat_format, verify_pat,
-};
-use ghad_core::models::AuthMethod;
+use ghad_core::github::auth::{validate_pat_format, verify_pat};
+use ghad_core::github::client::list_github_app_installations;
+use ghad_core::models::{AuthMethod, Config, GitHubAppConfig};
 
 use crate::output;
 
-const DEVICE_CLIENT_ID_ENV: &str = "GHAD_GITHUB_CLIENT_ID";
-const DEFAULT_DEVICE_CLIENT_ID: &str = "Iv23liLPhwgYwYeBHjoX";
-const DEVICE_FLOW_SCOPES: &str = "repo read:org read:project";
+const GITHUB_APP_SLUG_ENV: &str = "GHAD_GITHUB_APP_SLUG";
+const GITHUB_APP_ID_ENV: &str = "GHAD_GITHUB_APP_ID";
+const GITHUB_APP_PRIVATE_KEY_PATH_ENV: &str = "GHAD_GITHUB_APP_PRIVATE_KEY_PATH";
+const GITHUB_APP_INSTALLATION_ID_ENV: &str = "GHAD_GITHUB_APP_INSTALLATION_ID";
 
 /// Handle the `ghad auth configure` command.
 ///
@@ -21,7 +20,7 @@ const DEVICE_FLOW_SCOPES: &str = "repo read:org read:project";
 pub async fn handle_configure() -> Result<()> {
     println!("🔐 GHAAD — Authentication Setup\n");
 
-    let methods = vec!["Personal Access Token (PAT)", "GitHub Device Flow (OAuth)"];
+    let methods = vec!["Personal Access Token (PAT)", "GitHub App Installation"];
     let selection = Select::new()
         .with_prompt("Select authentication method")
         .items(&methods)
@@ -31,7 +30,7 @@ pub async fn handle_configure() -> Result<()> {
 
     match selection {
         0 => configure_pat().await,
-        1 => configure_device_flow().await,
+        1 => configure_github_app_installation().await,
         _ => unreachable!(),
     }
 }
@@ -74,98 +73,64 @@ async fn configure_pat() -> Result<()> {
     Ok(())
 }
 
-/// Configure authentication via GitHub Device Flow.
-async fn configure_device_flow() -> Result<()> {
-    let client_id = resolve_device_client_id();
+/// Configure authentication via GitHub App installation.
+async fn configure_github_app_installation() -> Result<()> {
+    println!("\nA GitHub App installation lets GitHub prompt you to select account, organization, and repositories.");
+    println!("The GitHub App needs repository permissions for Contents, Issues, Pull requests, and Metadata.\n");
 
-    let sp = output::spinner("Initiating GitHub Device Flow...");
-    let device = match request_device_code(&client_id, DEVICE_FLOW_SCOPES).await {
-        Ok(device) => device,
-        Err(err) => {
-            sp.finish_and_clear();
-            return Err(err).context(
-                "Failed to start GitHub Device Flow. Make sure you entered the OAuth App client ID, not the client secret, and that Device Flow is enabled in the app settings",
-            );
-        }
-    };
-    sp.finish_and_clear();
+    let app_slug = prompt_string("GitHub App slug", env_value(GITHUB_APP_SLUG_ENV))?;
+    let app_id = prompt_u64("GitHub App ID", env_value(GITHUB_APP_ID_ENV))?;
+    let private_key_path = prompt_string(
+        "GitHub App private key path",
+        env_value(GITHUB_APP_PRIVATE_KEY_PATH_ENV),
+    )?;
 
-    match open_url_in_default_browser(&device.verification_uri) {
-        Ok(()) => output::print_info("Opened GitHub Device Flow in your default browser."),
+    let install_url = format!("https://github.com/apps/{app_slug}/installations/new");
+    match open_url_in_default_browser(&install_url) {
+        Ok(()) => output::print_info("Opened GitHub App installation page in your default browser."),
         Err(err) => output::print_warning(&format!("Could not open browser automatically: {err}")),
     }
-    output::print_info("Open this URL in your browser:");
-    println!("{}", device.verification_uri);
-    output::print_info("Enter this code:");
-    println!("{}", device.user_code);
-    output::print_info("Waiting for GitHub authorization...");
+    output::print_info("Install the app for the account or organization you want, then choose all repositories or only selected repositories.");
+    println!("{install_url}");
 
-    let deadline = Instant::now() + Duration::from_secs(device.expires_in);
-    let mut interval = Duration::from_secs(device.interval.max(1));
-    let sp = output::spinner("Waiting for authorization...");
+    let installation_id = match env_value(GITHUB_APP_INSTALLATION_ID_ENV) {
+        Some(value) => value
+            .parse::<u64>()
+            .context("GHAD_GITHUB_APP_INSTALLATION_ID must be a positive integer")?,
+        None => select_github_app_installation(app_id, &private_key_path).await?,
+    };
 
-    while Instant::now() < deadline {
-        sleep(interval).await;
+    let mut config = ghad_core::config::load_default_config().unwrap_or_default();
+    config.auth_method = AuthMethod::GitHubAppInstallation;
+    config.github_token = None;
+    config.github_app = Some(GitHubAppConfig {
+        app_slug,
+        app_id,
+        private_key_path: private_key_path.into(),
+        installation_id,
+    });
 
-        let token_response = match poll_device_token(&client_id, &device.device_code).await {
-            Ok(response) => response,
-            Err(err) => {
-                sp.finish_and_clear();
-                return Err(err).context("Failed while polling GitHub Device Flow");
-            }
-        };
-
-        if let Some(token) = token_response.access_token {
-            validate_granted_device_scopes(token_response.scope.as_deref())?;
-            save_token(&token, AuthMethod::DeviceFlow)?;
+    let sp = output::spinner("Validating GitHub App installation...");
+    let client = match ghad_core::github::client::GithubClient::from_config(&config) {
+        Ok(client) => client,
+        Err(err) => {
             sp.finish_and_clear();
-
-            let config_path = ghad_core::config::default_config_path()?;
-            output::print_success("Authentication successful!");
-            output::print_info(&format!(
-                "Granted GitHub scopes: {}",
-                token_response.scope.as_deref().unwrap_or("(none)")
-            ));
-            output::print_info(&format!("Configuration saved to {}", config_path.display()));
-            return Ok(());
+            return Err(err).context("Failed to create GitHub App installation client");
         }
-
-        match token_response.error.as_deref() {
-            Some("authorization_pending") => {}
-            Some("slow_down") => interval += Duration::from_secs(5),
-            Some("expired_token") => {
-                sp.finish_and_clear();
-                anyhow::bail!("GitHub Device Flow code expired. Run 'ghad auth configure' again.");
-            }
-            Some("access_denied") => {
-                sp.finish_and_clear();
-                anyhow::bail!("GitHub Device Flow authorization was denied.");
-            }
-            Some(error) => {
-                sp.finish_and_clear();
-                let description = token_response
-                    .error_description
-                    .unwrap_or_else(|| "No error description provided".to_string());
-                anyhow::bail!("GitHub Device Flow failed: {error}: {description}");
-            }
-            None => {}
-        }
+    };
+    if let Err(err) = ghad_core::github::repos::list_repos(&client).await {
+        sp.finish_and_clear();
+        return Err(err).context("Failed to validate GitHub App installation");
     }
-
     sp.finish_and_clear();
-    anyhow::bail!("GitHub Device Flow timed out. Run 'ghad auth configure' again.");
-}
 
-fn resolve_device_client_id() -> String {
-    if let Some(client_id) = std::env::var(DEVICE_CLIENT_ID_ENV)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        return client_id;
-    }
+    save_config(config)?;
 
-    DEFAULT_DEVICE_CLIENT_ID.to_string()
+    let config_path = ghad_core::config::default_config_path()?;
+    output::print_success("GitHub App installation authentication configured!");
+    output::print_info(&format!("Configuration saved to {}", config_path.display()));
+
+    Ok(())
 }
 
 fn open_url_in_default_browser(url: &str) -> Result<()> {
@@ -185,42 +150,93 @@ fn open_url_in_default_browser(url: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_granted_device_scopes(granted_scope: Option<&str>) -> Result<()> {
-    let granted = parse_scopes(granted_scope.unwrap_or_default());
-    let required = parse_scopes(DEVICE_FLOW_SCOPES);
-    let missing: Vec<_> = required.difference(&granted).cloned().collect();
-
-    if missing.is_empty() {
-        return Ok(());
-    }
-
-    let granted_display = if granted.is_empty() {
-        "(none)".to_string()
-    } else {
-        granted.into_iter().collect::<Vec<_>>().join(", ")
-    };
-
-    anyhow::bail!(
-        "GitHub did not grant the required OAuth scopes. Missing: {}. Granted: {}. Re-run 'ghad auth configure' and approve all requested scopes; if this is an organization repository, the organization may also need to approve the OAuth app.",
-        missing.join(", "),
-        granted_display
-    );
+fn env_value(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
-fn parse_scopes(scopes: &str) -> BTreeSet<String> {
-    scopes
-        .split(|ch: char| ch == ',' || ch.is_whitespace())
-        .map(str::trim)
-        .filter(|scope| !scope.is_empty())
-        .map(ToString::to_string)
-        .collect()
+fn prompt_string(prompt: &str, default: Option<String>) -> Result<String> {
+    let mut input = Input::<String>::new().with_prompt(prompt.to_string());
+    if let Some(default) = default {
+        input = input.with_initial_text(default);
+    }
+    let value = input
+        .interact_text()
+        .context(format!("Failed to read {prompt}"))?;
+    let value = value.trim().to_string();
+    if value.is_empty() {
+        anyhow::bail!("{prompt} cannot be empty");
+    }
+    Ok(value)
+}
+
+fn prompt_u64(prompt: &str, default: Option<String>) -> Result<u64> {
+    let value = prompt_string(prompt, default)?;
+    value
+        .parse::<u64>()
+        .context(format!("{prompt} must be a positive integer"))
+}
+
+async fn select_github_app_installation(app_id: u64, private_key_path: &str) -> Result<u64> {
+    let _: String = Input::new()
+        .with_prompt("Press Enter after completing the GitHub App installation in your browser")
+        .allow_empty(true)
+        .interact_text()
+        .context("Failed to wait for installation confirmation")?;
+
+    let sp = output::spinner("Finding GitHub App installations...");
+    let installations =
+        match list_github_app_installations(app_id, Path::new(private_key_path)).await {
+            Ok(installations) => installations,
+            Err(err) => {
+                sp.finish_and_clear();
+                return Err(err).context("Failed to list GitHub App installations");
+            }
+        };
+    sp.finish_and_clear();
+
+    if installations.is_empty() {
+        anyhow::bail!(
+            "No GitHub App installations found. Complete the installation in your browser, then run 'ghad auth configure' again."
+        );
+    }
+
+    let labels: Vec<String> = installations
+        .iter()
+        .map(|installation| {
+            let target = installation.target_type.as_deref().unwrap_or("account");
+            let selection = installation
+                .repository_selection
+                .as_deref()
+                .unwrap_or("repositories unknown");
+            format!(
+                "{} ({target}, {selection}, installation {})",
+                installation.account_login, installation.id
+            )
+        })
+        .collect();
+    let selection = Select::new()
+        .with_prompt("Select GitHub App installation")
+        .items(&labels)
+        .default(0)
+        .interact()
+        .context("Failed to select GitHub App installation")?;
+
+    Ok(installations[selection].id)
 }
 
 fn save_token(token: &str, auth_method: AuthMethod) -> Result<()> {
     let mut config = ghad_core::config::load_default_config().unwrap_or_default();
     config.github_token = Some(token.to_string());
     config.auth_method = auth_method;
+    config.github_app = None;
 
+    save_config(config)
+}
+
+fn save_config(config: Config) -> Result<()> {
     ghad_core::config::save_default_config(&config).context("Failed to save GitHub credentials")?;
     Ok(())
 }
@@ -230,22 +246,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_scopes_accepts_space_and_comma_separators() {
-        let scopes = parse_scopes("repo, read:org read:project");
-        assert!(scopes.contains("repo"));
-        assert!(scopes.contains("read:org"));
-        assert!(scopes.contains("read:project"));
+    fn env_value_ignores_missing_vars() {
+        assert!(env_value("GHAD_TEST_MISSING_ENV_VAR").is_none());
     }
 
     #[test]
-    fn validate_granted_device_scopes_accepts_required_scopes() {
-        validate_granted_device_scopes(Some("repo read:org read:project")).unwrap();
-    }
-
-    #[test]
-    fn validate_granted_device_scopes_rejects_empty_scopes() {
-        let err = validate_granted_device_scopes(Some("")).unwrap_err();
-        assert!(err.to_string().contains("Missing:"));
-        assert!(err.to_string().contains("Granted: (none)"));
+    fn prompt_u64_rejects_non_numeric_values() {
+        assert!("abc".parse::<u64>().is_err());
     }
 }
