@@ -11,13 +11,12 @@ pub async fn list_repos(client: &GithubClient) -> Result<Vec<GithubRepo>> {
         .list_repos_for_authenticated_user()
         .visibility("all")
         .affiliation("owner,collaborator,organization_member")
-        .type_("all")
         .sort("updated")
         .per_page(100)
         .send()
         .await
         .map_err(|e| GhadError::GitHubApi {
-            message: format!("failed to list repos: {e}"),
+            message: format!("failed to list repos: {}", octocrab_error_message(&e)),
         })?;
 
     let repos = client
@@ -25,7 +24,7 @@ pub async fn list_repos(client: &GithubClient) -> Result<Vec<GithubRepo>> {
         .all_pages(page)
         .await
         .map_err(|e| GhadError::GitHubApi {
-            message: format!("failed to paginate repos: {e}"),
+            message: format!("failed to paginate repos: {}", octocrab_error_message(&e)),
         })?;
 
     Ok(map_repos(repos))
@@ -44,7 +43,10 @@ pub async fn list_repos_by_org(client: &GithubClient, org: &str) -> Result<Vec<G
         .send()
         .await
         .map_err(|e| GhadError::GitHubApi {
-            message: format!("failed to list repos for org {org}: {e}"),
+            message: format!(
+                "failed to list repos for org {org}: {}",
+                octocrab_error_message(&e)
+            ),
         })?;
 
     let repos = client
@@ -52,10 +54,22 @@ pub async fn list_repos_by_org(client: &GithubClient, org: &str) -> Result<Vec<G
         .all_pages(page)
         .await
         .map_err(|e| GhadError::GitHubApi {
-            message: format!("failed to paginate repos for org {org}: {e}"),
+            message: format!(
+                "failed to paginate repos for org {org}: {}",
+                octocrab_error_message(&e)
+            ),
         })?;
 
     Ok(map_repos(repos))
+}
+
+fn octocrab_error_message(error: &octocrab::Error) -> String {
+    match error {
+        octocrab::Error::GitHub { source, .. } => {
+            format!("GitHub returned status {}: {}", source.status_code, source)
+        }
+        _ => error.to_string(),
+    }
 }
 
 fn map_repos(repos: Vec<octocrab::models::Repository>) -> Vec<GithubRepo> {
