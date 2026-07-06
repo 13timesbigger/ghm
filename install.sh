@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-BIN_NAME="ghm"
+BIN_NAME="ghad"
 PACKAGE_NAME="ghm-cli"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 GHM_REPO="${GHM_REPO:-corelmax/github-monitor}"
@@ -9,7 +9,7 @@ GHM_REF="${GHM_REF:-main}"
 
 usage() {
   cat <<EOF
-Install GitHub Monitor (${BIN_NAME}).
+Install Github Activity to Agents Dispatcher (GHAAD) as ${BIN_NAME}.
 
 Usage:
   ./install.sh [--dir DIR] [--debug] [--no-build]
@@ -85,9 +85,9 @@ if [ ! -f "${source_dir}/Cargo.toml" ] || [ ! -d "${source_dir}/crates/${PACKAGE
   fi
 
   if command -v mktemp >/dev/null 2>&1; then
-    tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/ghm-install.XXXXXX")"
+    tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/ghad-install.XXXXXX")"
   else
-    tmpdir="${TMPDIR:-/tmp}/ghm-install.$$"
+    tmpdir="${TMPDIR:-/tmp}/ghad-install.$$"
     mkdir -p "$tmpdir"
   fi
 

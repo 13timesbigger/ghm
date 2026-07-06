@@ -134,7 +134,7 @@ mod tests {
     fn poller_custom_interval() {
         let (_tx, rx) = shutdown_channel();
         let poller = Poller::new(
-            PathBuf::from("/tmp/ghm"),
+            PathBuf::from("/tmp/ghad"),
             Some(Duration::from_secs(60)),
             rx,
         );
@@ -144,7 +144,7 @@ mod tests {
     #[test]
     fn poller_default_interval() {
         let (_tx, rx) = shutdown_channel();
-        let poller = Poller::new(PathBuf::from("/tmp/ghm"), None, rx);
+        let poller = Poller::new(PathBuf::from("/tmp/ghad"), None, rx);
         assert_eq!(poller.interval(), Duration::from_secs(30));
     }
 

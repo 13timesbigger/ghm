@@ -5,12 +5,12 @@ use ghm_core::github::repos;
 
 use crate::output::{self, RepoRow};
 
-/// Handle the `ghm repo list` command.
+/// Handle the `ghad repo list` command.
 ///
 /// Lists repositories, optionally filtered by organization.
 pub async fn handle_list(org: Option<String>) -> Result<()> {
     let config = load_default_config().context(
-        "Failed to load configuration. Run 'ghm auth configure' first.",
+        "Failed to load configuration. Run 'ghad auth configure' first.",
     )?;
 
     let label = match &org {

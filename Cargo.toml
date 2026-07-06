@@ -10,7 +10,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["corelmax"]
 license = "MIT"
-description = "GitHub Monitor - CLI tool and daemon for monitoring GitHub repositories"
+description = "Github Activity to Agents Dispatcher (GHAAD) - CLI tool and daemon for dispatching GitHub activity to agents"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

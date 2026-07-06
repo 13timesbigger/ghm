@@ -22,7 +22,7 @@ impl DaemonManager {
         let config_dir = config::default_config_dir()?;
         let state_store = StateStore::new(&config_dir);
         
-        let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ghm"));
+        let exe_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ghad"));
         let launchd = LaunchdManager::new(exe_path, config_dir.clone());
         
         Ok(Self {

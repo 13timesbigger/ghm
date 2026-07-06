@@ -20,7 +20,7 @@ fn resolve_repo(repo: &Option<String>, org: &Option<String>) -> Option<String> {
     }
 }
 
-/// Handle the `ghm issue list` command.
+/// Handle the `ghad issue list` command.
 ///
 /// Lists issues, optionally filtered by repository, organization, and/or project.
 pub async fn handle_list(
@@ -29,7 +29,7 @@ pub async fn handle_list(
     _project: Option<String>,
 ) -> Result<()> {
     let config = ghm_core::config::load_default_config().context(
-        "Failed to load configuration. Run 'ghm auth configure' first.",
+        "Failed to load configuration. Run 'ghad auth configure' first.",
     )?;
 
     let label = "Fetching issues...".to_string();

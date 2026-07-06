@@ -5,7 +5,7 @@ use ghm_core::store::PromptStore;
 use crate::cli::{PromptArgs, PromptScope};
 use crate::output;
 
-/// Handle the `ghm prompt` command.
+/// Handle the `ghad prompt` command.
 ///
 /// Sets a global or repository-specific prompt for AI agents.
 pub async fn handle_prompt(args: &PromptArgs) -> Result<()> {

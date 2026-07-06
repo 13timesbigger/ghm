@@ -1,23 +1,23 @@
 use clap::{Parser, Subcommand};
 
-/// GitHub Monitor (ghm) — A powerful CLI tool for monitoring GitHub repositories,
-/// tracking issues, pull requests, and projects across your organizations.
+/// Github Activity to Agents Dispatcher (GHAAD) — A CLI tool for tracking
+/// GitHub activity and dispatching it to agents.
 ///
-/// Use `ghm <command> --help` for detailed information about each command.
+/// Use `ghad <command> --help` for detailed information about each command.
 #[derive(Parser, Debug)]
 #[command(
-    name = "ghm",
+    name = "ghad",
     version,
-    about = "GitHub Monitor — CLI tool for monitoring GitHub repositories",
-    long_about = "GitHub Monitor (ghm) is a powerful CLI tool and daemon for monitoring \
-        GitHub repositories, tracking issues, pull requests, and projects across \
-        your organizations.\n\n\
+    about = "Github Activity to Agents Dispatcher (GHAAD)",
+    long_about = "Github Activity to Agents Dispatcher (GHAAD) is a CLI tool and daemon \
+        for monitoring GitHub repositories, tracking issues, pull requests, and projects \
+        across your organizations, and dispatching activity to agents.\n\n\
         Get started by configuring authentication:\n  \
-        ghm auth configure\n\n\
+        ghad auth configure\n\n\
         Then list your organizations:\n  \
-        ghm org list\n\n\
+        ghad org list\n\n\
         And start observing repositories:\n  \
-        ghm observe <repo-name>",
+        ghad observe <repo-name>",
     propagate_version = true
 )]
 pub struct Cli {
@@ -94,9 +94,9 @@ pub enum Commands {
     /// to automatically respond to changes.
     ///
     /// Examples:
-    ///   ghm observe myorg/myrepo --issues --prs
-    ///   ghm observe myorg/myrepo --prompt "Review for security issues" --claude
-    ///   ghm observe list
+    ///   ghad observe myorg/myrepo --issues --prs
+    ///   ghad observe myorg/myrepo --prompt "Review for security issues" --claude
+    ///   ghad observe list
     Observe(ObserveArgs),
 
     /// Manage prompts for AI-powered agents.
@@ -106,21 +106,21 @@ pub enum Commands {
     /// specific event types (issues or PRs).
     ///
     /// Examples:
-    ///   ghm prompt --global "Always check for security vulnerabilities"
-    ///   ghm prompt --repo myorg/myrepo --issue "Label and triage this issue"
-    ///   ghm prompt --repo myorg/myrepo --pr "Review code quality"
+    ///   ghad prompt --global "Always check for security vulnerabilities"
+    ///   ghad prompt --repo myorg/myrepo --issue "Label and triage this issue"
+    ///   ghad prompt --repo myorg/myrepo --pr "Review code quality"
     Prompt(PromptArgs),
 
-    /// Manage the ghm background daemon.
+    /// Manage the ghad background daemon.
     ///
     /// The daemon runs in the background and periodically checks observed
     /// repositories for changes, triggering configured AI agents when
     /// new events are detected.
     ///
     /// Examples:
-    ///   ghm daemon start
-    ///   ghm daemon status
-    ///   ghm daemon install   # Install as a system service
+    ///   ghad daemon start
+    ///   ghad daemon status
+    ///   ghad daemon install   # Install as a system service
     #[command(subcommand)]
     Daemon(DaemonCommands),
 }
@@ -251,11 +251,11 @@ pub enum IssueCommands {
     long_about = "Add a repository to the watch list to monitor for new issues, \
         pull requests, and other events. Configure AI-powered agents \
         to automatically respond to changes.\n\n\
-        Use 'ghm observe list' to view currently observed repositories.\n\n\
+        Use 'ghad observe list' to view currently observed repositories.\n\n\
         Examples:\n  \
-        ghm observe myorg/myrepo --issues --prs\n  \
-        ghm observe myorg/myrepo --prompt \"Review for security\" --claude\n  \
-        ghm observe list"
+        ghad observe myorg/myrepo --issues --prs\n  \
+        ghad observe myorg/myrepo --prompt \"Review for security\" --claude\n  \
+        ghad observe list"
 )]
 pub struct ObserveArgs {
     #[command(subcommand)]
@@ -331,9 +331,9 @@ impl ObserveArgs {
     long_about = "Set global or repository-specific prompts that are used by AI agents \
         when processing issues and pull requests.\n\n\
         Examples:\n  \
-        ghm prompt --global \"Always check for security vulnerabilities\"\n  \
-        ghm prompt --repo myorg/myrepo --issue \"Triage this issue\"\n  \
-        ghm prompt --repo myorg/myrepo --pr \"Review code quality\""
+        ghad prompt --global \"Always check for security vulnerabilities\"\n  \
+        ghad prompt --repo myorg/myrepo --issue \"Triage this issue\"\n  \
+        ghad prompt --repo myorg/myrepo --pr \"Review code quality\""
 )]
 pub struct PromptArgs {
     /// The prompt text to set for the AI agent.
@@ -386,30 +386,30 @@ pub enum PromptScope {
 
 #[derive(Subcommand, Debug)]
 pub enum DaemonCommands {
-    /// Start the ghm daemon in the background.
+    /// Start the ghad daemon in the background.
     ///
     /// The daemon will begin polling observed repositories for changes
     /// at the configured interval and trigger any configured AI agents.
     Start,
 
-    /// Stop the running ghm daemon.
+    /// Stop the running ghad daemon.
     ///
     /// Gracefully shuts down the background daemon process.
     Stop,
 
-    /// Check the status of the ghm daemon.
+    /// Check the status of the ghad daemon.
     ///
     /// Shows whether the daemon is running, its PID, uptime,
     /// and last check timestamp.
     Status,
 
-    /// Install the ghm daemon as a system service.
+    /// Install the ghad daemon as a system service.
     ///
     /// On macOS, this creates a LaunchAgent plist.
     /// On Linux, this creates a systemd user service.
     Install,
 
-    /// Uninstall the ghm daemon system service.
+    /// Uninstall the ghad daemon system service.
     ///
     /// Removes the system service configuration created by 'install'.
     Uninstall,
@@ -430,13 +430,13 @@ mod tests {
     #[test]
     fn test_cli_parses_no_args_shows_help() {
         // Without subcommand, should error (subcommand required)
-        let result = Cli::try_parse_from(["ghm"]);
+        let result = Cli::try_parse_from(["ghad"]);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_cli_debug_display() {
-        let cli = Cli::try_parse_from(["ghm", "org", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "org", "list"]).unwrap();
         let debug_str = format!("{:?}", cli);
         assert!(debug_str.contains("Cli"));
     }
@@ -449,19 +449,19 @@ mod tests {
 
     #[test]
     fn test_auth_configure() {
-        let cli = Cli::try_parse_from(["ghm", "auth", "configure"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "auth", "configure"]).unwrap();
         assert!(matches!(cli.command, Commands::Auth(AuthCommands::Configure)));
     }
 
     #[test]
     fn test_org_list() {
-        let cli = Cli::try_parse_from(["ghm", "org", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "org", "list"]).unwrap();
         assert!(matches!(cli.command, Commands::Org(OrgCommands::List)));
     }
 
     #[test]
     fn test_repo_list_no_filter() {
-        let cli = Cli::try_parse_from(["ghm", "repo", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "repo", "list"]).unwrap();
         match &cli.command {
             Commands::Repo(RepoCommands::List { org }) => {
                 assert!(org.is_none());
@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_repo_list_with_org() {
-        let cli = Cli::try_parse_from(["ghm", "repo", "list", "--org", "mycompany"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "repo", "list", "--org", "mycompany"]).unwrap();
         match &cli.command {
             Commands::Repo(RepoCommands::List { org }) => {
                 assert_eq!(org.as_deref(), Some("mycompany"));
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_repo_list_with_org_short() {
-        let cli = Cli::try_parse_from(["ghm", "repo", "list", "-o", "mycompany"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "repo", "list", "-o", "mycompany"]).unwrap();
         match &cli.command {
             Commands::Repo(RepoCommands::List { org }) => {
                 assert_eq!(org.as_deref(), Some("mycompany"));
@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn test_project_list_no_filter() {
-        let cli = Cli::try_parse_from(["ghm", "project", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "project", "list"]).unwrap();
         match &cli.command {
             Commands::Project(ProjectCommands::List { org }) => {
                 assert!(org.is_none());
@@ -505,7 +505,7 @@ mod tests {
 
     #[test]
     fn test_project_list_with_org() {
-        let cli = Cli::try_parse_from(["ghm", "project", "list", "--org", "acme"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "project", "list", "--org", "acme"]).unwrap();
         match &cli.command {
             Commands::Project(ProjectCommands::List { org }) => {
                 assert_eq!(org.as_deref(), Some("acme"));
@@ -516,7 +516,7 @@ mod tests {
 
     #[test]
     fn test_pr_list_no_filter() {
-        let cli = Cli::try_parse_from(["ghm", "pr", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "pr", "list"]).unwrap();
         match &cli.command {
             Commands::Pr(PrCommands::List { repo, org }) => {
                 assert!(repo.is_none());
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn test_pr_list_with_repo_and_org() {
         let cli =
-            Cli::try_parse_from(["ghm", "pr", "list", "--repo", "myrepo", "--org", "myorg"])
+            Cli::try_parse_from(["ghad", "pr", "list", "--repo", "myrepo", "--org", "myorg"])
                 .unwrap();
         match &cli.command {
             Commands::Pr(PrCommands::List { repo, org }) => {
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn test_issue_list_full_filters() {
         let cli = Cli::try_parse_from([
-            "ghm",
+            "ghad",
             "issue",
             "list",
             "--repo",
@@ -566,7 +566,7 @@ mod tests {
 
     #[test]
     fn test_issue_list_no_filters() {
-        let cli = Cli::try_parse_from(["ghm", "issue", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "issue", "list"]).unwrap();
         match &cli.command {
             Commands::Issue(IssueCommands::List { repo, org, project }) => {
                 assert!(repo.is_none());
@@ -579,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_observe_list() {
-        let cli = Cli::try_parse_from(["ghm", "observe", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "observe", "list"]).unwrap();
         match &cli.command {
             Commands::Observe(args) => {
                 assert!(matches!(
@@ -594,7 +594,7 @@ mod tests {
     #[test]
     fn test_observe_repo_with_flags() {
         let cli = Cli::try_parse_from([
-            "ghm",
+            "ghad",
             "observe",
             "myorg/myrepo",
             "--issues",
@@ -624,7 +624,7 @@ mod tests {
     fn test_observe_agent_mutual_exclusivity() {
         // Cannot specify both --claude and --codex
         let result = Cli::try_parse_from([
-            "ghm",
+            "ghad",
             "observe",
             "myorg/myrepo",
             "--claude",
@@ -635,7 +635,7 @@ mod tests {
 
     #[test]
     fn test_observe_agent_none() {
-        let cli = Cli::try_parse_from(["ghm", "observe", "myorg/myrepo"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "observe", "myorg/myrepo"]).unwrap();
         match &cli.command {
             Commands::Observe(args) => {
                 assert_eq!(args.agent(), None);
@@ -647,7 +647,7 @@ mod tests {
     #[test]
     fn test_observe_agent_codex() {
         let cli =
-            Cli::try_parse_from(["ghm", "observe", "myorg/myrepo", "--codex"]).unwrap();
+            Cli::try_parse_from(["ghad", "observe", "myorg/myrepo", "--codex"]).unwrap();
         match &cli.command {
             Commands::Observe(args) => {
                 assert_eq!(args.agent(), Some("codex"));
@@ -659,7 +659,7 @@ mod tests {
     #[test]
     fn test_observe_agent_agy() {
         let cli =
-            Cli::try_parse_from(["ghm", "observe", "myorg/myrepo", "--agy"]).unwrap();
+            Cli::try_parse_from(["ghad", "observe", "myorg/myrepo", "--agy"]).unwrap();
         match &cli.command {
             Commands::Observe(args) => {
                 assert_eq!(args.agent(), Some("agy"));
@@ -671,7 +671,7 @@ mod tests {
     #[test]
     fn test_observe_agent_copilot() {
         let cli =
-            Cli::try_parse_from(["ghm", "observe", "myorg/myrepo", "--copilot"]).unwrap();
+            Cli::try_parse_from(["ghad", "observe", "myorg/myrepo", "--copilot"]).unwrap();
         match &cli.command {
             Commands::Observe(args) => {
                 assert_eq!(args.agent(), Some("copilot"));
@@ -683,7 +683,7 @@ mod tests {
     #[test]
     fn test_prompt_global() {
         let cli =
-            Cli::try_parse_from(["ghm", "prompt", "--global", "Check all the things"])
+            Cli::try_parse_from(["ghad", "prompt", "--global", "Check all the things"])
                 .unwrap();
         match &cli.command {
             Commands::Prompt(args) => {
@@ -699,7 +699,7 @@ mod tests {
     #[test]
     fn test_prompt_repo_issue_scope() {
         let cli = Cli::try_parse_from([
-            "ghm",
+            "ghad",
             "prompt",
             "--repo",
             "myorg/myrepo",
@@ -720,7 +720,7 @@ mod tests {
     #[test]
     fn test_prompt_repo_pr_scope() {
         let cli = Cli::try_parse_from([
-            "ghm",
+            "ghad",
             "prompt",
             "--repo",
             "myorg/myrepo",
@@ -741,14 +741,14 @@ mod tests {
     fn test_prompt_scope_mutual_exclusivity() {
         // Cannot specify both --issue and --pr
         let result = Cli::try_parse_from([
-            "ghm", "prompt", "--issue", "--pr", "do stuff",
+            "ghad", "prompt", "--issue", "--pr", "do stuff",
         ]);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_daemon_start() {
-        let cli = Cli::try_parse_from(["ghm", "daemon", "start"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "daemon", "start"]).unwrap();
         assert!(matches!(
             cli.command,
             Commands::Daemon(DaemonCommands::Start)
@@ -757,7 +757,7 @@ mod tests {
 
     #[test]
     fn test_daemon_stop() {
-        let cli = Cli::try_parse_from(["ghm", "daemon", "stop"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "daemon", "stop"]).unwrap();
         assert!(matches!(
             cli.command,
             Commands::Daemon(DaemonCommands::Stop)
@@ -766,7 +766,7 @@ mod tests {
 
     #[test]
     fn test_daemon_status() {
-        let cli = Cli::try_parse_from(["ghm", "daemon", "status"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "daemon", "status"]).unwrap();
         assert!(matches!(
             cli.command,
             Commands::Daemon(DaemonCommands::Status)
@@ -775,7 +775,7 @@ mod tests {
 
     #[test]
     fn test_daemon_install() {
-        let cli = Cli::try_parse_from(["ghm", "daemon", "install"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "daemon", "install"]).unwrap();
         assert!(matches!(
             cli.command,
             Commands::Daemon(DaemonCommands::Install)
@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn test_daemon_uninstall() {
-        let cli = Cli::try_parse_from(["ghm", "daemon", "uninstall"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "daemon", "uninstall"]).unwrap();
         assert!(matches!(
             cli.command,
             Commands::Daemon(DaemonCommands::Uninstall)
@@ -793,20 +793,20 @@ mod tests {
 
     #[test]
     fn test_verbose_flag() {
-        let cli = Cli::try_parse_from(["ghm", "-vvv", "org", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "-vvv", "org", "list"]).unwrap();
         assert_eq!(cli.verbose, 3);
     }
 
     #[test]
     fn test_format_json() {
         let cli =
-            Cli::try_parse_from(["ghm", "--format", "json", "org", "list"]).unwrap();
+            Cli::try_parse_from(["ghad", "--format", "json", "org", "list"]).unwrap();
         assert!(matches!(cli.format, OutputFormat::Json));
     }
 
     #[test]
     fn test_format_text_default() {
-        let cli = Cli::try_parse_from(["ghm", "org", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "org", "list"]).unwrap();
         assert!(matches!(cli.format, OutputFormat::Text));
     }
 

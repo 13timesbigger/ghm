@@ -303,7 +303,7 @@ pub fn print_observed_table(observed: &[ObservedRow]) {
     if observed.is_empty() {
         println!(
             "{}",
-            "No observed repositories. Use 'ghm observe <repo>' to start watching."
+            "No observed repositories. Use 'ghad observe <repo>' to start watching."
                 .yellow()
         );
         return;

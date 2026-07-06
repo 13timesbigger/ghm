@@ -24,7 +24,7 @@ pub async fn handle_daemon(cmd: &DaemonCommands) -> Result<()> {
 /// Start the daemon process.
 async fn handle_start() -> Result<()> {
     let _config = load_default_config().context(
-        "Failed to load configuration. Run 'ghm auth configure' first.",
+        "Failed to load configuration. Run 'ghad auth configure' first.",
     )?;
 
     let sp = output::spinner("Starting daemon...");
@@ -96,7 +96,7 @@ async fn handle_install() -> Result<()> {
 
     sp.finish_and_clear();
     output::print_success("Daemon service installed.");
-    output::print_info("Run 'ghm daemon start' to start the daemon.");
+    output::print_info("Run 'ghad daemon start' to start the daemon.");
 
     Ok(())
 }

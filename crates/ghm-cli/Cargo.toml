@@ -4,10 +4,10 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "CLI binary for GitHub Monitor - ghm command-line tool"
+description = "CLI binary for Github Activity to Agents Dispatcher (GHAAD)"
 
 [[bin]]
-name = "ghm"
+name = "ghad"
 path = "src/main.rs"
 
 [dependencies]

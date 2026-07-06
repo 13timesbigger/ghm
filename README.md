@@ -1,6 +1,6 @@
-# GitHub Monitor (ghm)
+# Github Activity to Agents Dispatcher (GHAAD)
 
-A background daemon and CLI tool for observing GitHub repositories for new pull requests and issues, and reacting to them using AI agents.
+Github Activity to Agents Dispatcher (GHAAD) is a background daemon and CLI tool for observing GitHub repositories for new pull requests and issues, and dispatching those activities to AI agents.
 
 ## Features
 - **CLI Management**: Authenticate, list organizations, repositories, projects, pull requests, and issues.
@@ -10,7 +10,7 @@ A background daemon and CLI tool for observing GitHub repositories for new pull 
 
 ## Installation
 
-Install the `ghm` binary into `/usr/local/bin`:
+Install the `ghad` binary for GHAAD into `/usr/local/bin`:
 ```bash
 ./install.sh
 ```
@@ -31,47 +31,47 @@ You can also build the binary manually using Cargo:
 cargo build --release
 ```
 
-The binary will be located at `target/release/ghm`.
+The binary will be located at `target/release/ghad`.
 
 ## Usage
 
 ### Authentication
 Before doing anything else, authenticate with GitHub using a Personal Access Token (PAT):
 ```bash
-ghm auth configure
+ghad auth configure
 ```
 This will save your configuration to `~/.config/ghm/config.json`.
 
-GitHub Device Flow is also supported. Select it during `ghm auth configure`, then enter a GitHub OAuth app client ID when prompted or set `GHM_GITHUB_CLIENT_ID` before running the command.
+GitHub Device Flow is also supported. Select it during `ghad auth configure`, then enter a GitHub OAuth app client ID when prompted or set `GHM_GITHUB_CLIENT_ID` before running the command.
 
 ### Listing Resources
 You can list resources from GitHub using the CLI:
 ```bash
-ghm org list
-ghm repo list --org myorganization
-ghm project list
-ghm pr list --repo myorg/myrepo
-ghm issue list --org myorg
+ghad org list
+ghad repo list --org myorganization
+ghad project list
+ghad pr list --repo myorg/myrepo
+ghad issue list --org myorg
 ```
 
 ### Observation and Agents
 To add a repository to the watch list:
 ```bash
-ghm observe myorg/myrepo --issues --prs --prompt "Check for bugs" --claude
+ghad observe myorg/myrepo --issues --prs --prompt "Check for bugs" --claude
 ```
 
 List your observed repositories:
 ```bash
-ghm observe list
+ghad observe list
 ```
 
 Manage default prompts for the agents:
 ```bash
 # Global prompt
-ghm prompt --global "Always be polite"
+ghad prompt --global "Always be polite"
 
 # Repository-specific prompt
-ghm prompt --repo myorg/myrepo --pr "Review this PR thoroughly"
+ghad prompt --repo myorg/myrepo --pr "Review this PR thoroughly"
 ```
 
 ### Daemon Management
@@ -79,16 +79,16 @@ The daemon runs in the background and polls the GitHub API for your observed rep
 
 ```bash
 # Start the daemon in the foreground
-ghm daemon start
+ghad daemon start
 
 # Install the daemon as a background service (macOS launchd)
-ghm daemon install
+ghad daemon install
 
 # Check status
-ghm daemon status
+ghad daemon status
 
 # Uninstall the background service
-ghm daemon uninstall
+ghad daemon uninstall
 ```
 
 ## Architecture

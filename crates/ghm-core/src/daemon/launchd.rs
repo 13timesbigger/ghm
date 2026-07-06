@@ -3,12 +3,12 @@ use std::path::{Path, PathBuf};
 use crate::error::{GhmError, Result};
 
 /// Label used in the plist.
-const PLIST_LABEL: &str = "com.ghm.daemon";
+const PLIST_LABEL: &str = "com.ghad.daemon";
 
 /// Manages macOS launchd plist generation for the GHM daemon.
 #[derive(Debug, Clone)]
 pub struct LaunchdManager {
-    /// Path to the ghm binary.
+    /// Path to the ghad binary.
     binary_path: PathBuf,
     /// Path to the config directory.
     config_dir: PathBuf,
@@ -27,7 +27,7 @@ impl LaunchdManager {
         PLIST_LABEL
     }
 
-    /// Default plist install path: `~/Library/LaunchAgents/com.ghm.daemon.plist`.
+    /// Default plist install path: `~/Library/LaunchAgents/com.ghad.daemon.plist`.
     pub fn default_plist_path() -> Result<PathBuf> {
         let home = dirs::home_dir().ok_or_else(|| GhmError::LaunchdError {
             message: "could not determine home directory".into(),
@@ -104,7 +104,7 @@ mod tests {
 
     fn make_manager() -> LaunchdManager {
         LaunchdManager::new(
-            PathBuf::from("/usr/local/bin/ghm"),
+            PathBuf::from("/usr/local/bin/ghad"),
             PathBuf::from("/Users/test/.config/ghm"),
         )
     }
@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn label_is_correct() {
         let mgr = make_manager();
-        assert_eq!(mgr.label(), "com.ghm.daemon");
+        assert_eq!(mgr.label(), "com.ghad.daemon");
     }
 
     #[test]
@@ -120,7 +120,7 @@ mod tests {
         let path = LaunchdManager::default_plist_path();
         // Should succeed on macOS
         if let Ok(p) = path {
-            assert!(p.ends_with("com.ghm.daemon.plist"));
+            assert!(p.ends_with("com.ghad.daemon.plist"));
             assert!(p.to_string_lossy().contains("LaunchAgents"));
         }
     }
@@ -131,8 +131,8 @@ mod tests {
         let plist = mgr.generate_plist();
 
         assert!(plist.contains("<?xml version"));
-        assert!(plist.contains("com.ghm.daemon"));
-        assert!(plist.contains("/usr/local/bin/ghm"));
+        assert!(plist.contains("com.ghad.daemon"));
+        assert!(plist.contains("/usr/local/bin/ghad"));
         assert!(plist.contains("daemon"));
         assert!(plist.contains("run"));
         assert!(plist.contains("--config-dir"));
@@ -161,12 +161,12 @@ mod tests {
     fn install_plist_creates_file() {
         let tmp = TempDir::new().unwrap();
         let mgr = make_manager();
-        let path = tmp.path().join("com.ghm.daemon.plist");
+        let path = tmp.path().join("com.ghad.daemon.plist");
         mgr.install_plist(&path).unwrap();
         assert!(path.exists());
 
         let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("com.ghm.daemon"));
+        assert!(content.contains("com.ghad.daemon"));
     }
 
     #[test]
@@ -177,7 +177,7 @@ mod tests {
             .path()
             .join("Library")
             .join("LaunchAgents")
-            .join("com.ghm.daemon.plist");
+            .join("com.ghad.daemon.plist");
         mgr.install_plist(&path).unwrap();
         assert!(path.exists());
     }
@@ -186,7 +186,7 @@ mod tests {
     fn uninstall_plist_removes_file() {
         let tmp = TempDir::new().unwrap();
         let mgr = make_manager();
-        let path = tmp.path().join("com.ghm.daemon.plist");
+        let path = tmp.path().join("com.ghad.daemon.plist");
         mgr.install_plist(&path).unwrap();
         assert!(path.exists());
         mgr.uninstall_plist(&path).unwrap();
@@ -212,11 +212,11 @@ mod tests {
     #[test]
     fn plist_with_spaces_in_paths() {
         let mgr = LaunchdManager::new(
-            PathBuf::from("/usr/local/bin/my ghm"),
+            PathBuf::from("/usr/local/bin/my ghad"),
             PathBuf::from("/Users/my user/.config/ghm"),
         );
         let plist = mgr.generate_plist();
-        assert!(plist.contains("/usr/local/bin/my ghm"));
+        assert!(plist.contains("/usr/local/bin/my ghad"));
         assert!(plist.contains("/Users/my user/.config/ghm"));
     }
 }

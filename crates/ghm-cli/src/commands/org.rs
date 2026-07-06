@@ -5,12 +5,12 @@ use ghm_core::github::orgs;
 
 use crate::output::{self, OrgRow};
 
-/// Handle the `ghm org list` command.
+/// Handle the `ghad org list` command.
 ///
 /// Lists all GitHub organizations that the authenticated user belongs to.
 pub async fn handle_list() -> Result<()> {
     let config = load_default_config().context(
-        "Failed to load configuration. Run 'ghm auth configure' first.",
+        "Failed to load configuration. Run 'ghad auth configure' first.",
     )?;
 
     let sp = output::spinner("Fetching organizations...");

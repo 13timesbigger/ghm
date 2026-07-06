@@ -12,11 +12,11 @@ use crate::output;
 const DEVICE_CLIENT_ID_ENV: &str = "GHM_GITHUB_CLIENT_ID";
 const DEVICE_FLOW_SCOPES: &str = "repo read:org read:project";
 
-/// Handle the `ghm auth configure` command.
+/// Handle the `ghad auth configure` command.
 ///
 /// Interactively prompts the user for authentication method and credentials.
 pub async fn handle_configure() -> Result<()> {
-    println!("🔐 GitHub Monitor — Authentication Setup\n");
+    println!("🔐 GHAAD — Authentication Setup\n");
 
     let methods = vec!["Personal Access Token (PAT)", "GitHub Device Flow (OAuth)"];
     let selection = Select::new()
@@ -121,7 +121,7 @@ async fn configure_device_flow() -> Result<()> {
             Some("slow_down") => interval += Duration::from_secs(5),
             Some("expired_token") => {
                 sp.finish_and_clear();
-                anyhow::bail!("GitHub Device Flow code expired. Run 'ghm auth configure' again.");
+                anyhow::bail!("GitHub Device Flow code expired. Run 'ghad auth configure' again.");
             }
             Some("access_denied") => {
                 sp.finish_and_clear();
@@ -139,7 +139,7 @@ async fn configure_device_flow() -> Result<()> {
     }
 
     sp.finish_and_clear();
-    anyhow::bail!("GitHub Device Flow timed out. Run 'ghm auth configure' again.");
+    anyhow::bail!("GitHub Device Flow timed out. Run 'ghad auth configure' again.");
 }
 
 fn resolve_device_client_id() -> Result<String> {

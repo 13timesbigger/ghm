@@ -5,12 +5,12 @@ use ghm_core::github::pulls;
 
 use crate::output::{self, PrRow};
 
-/// Handle the `ghm pr list` command.
+/// Handle the `ghad pr list` command.
 ///
 /// Lists pull requests, optionally filtered by repository and/or organization.
 pub async fn handle_list(repo: Option<String>, org: Option<String>) -> Result<()> {
     let config = ghm_core::config::load_default_config().context(
-        "Failed to load configuration. Run 'ghm auth configure' first.",
+        "Failed to load configuration. Run 'ghad auth configure' first.",
     )?;
 
     let label = "Fetching pull requests...".to_string();

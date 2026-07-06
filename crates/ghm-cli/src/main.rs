@@ -37,7 +37,7 @@ async fn run() -> Result<()> {
         .with_target(false)
         .init();
 
-    tracing::debug!("ghm starting with verbosity level {}", cli.verbose);
+    tracing::debug!("ghad starting with verbosity level {}", cli.verbose);
 
     match cli.command {
         // ── Auth ───────────────────────────────────────────────────────

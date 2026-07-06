@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Core library for GitHub Monitor - GitHub API client, config, storage, and daemon logic"
+description = "Core library for Github Activity to Agents Dispatcher (GHAAD) - GitHub API client, config, storage, and daemon logic"
 
 [dependencies]
 tokio = { workspace = true }

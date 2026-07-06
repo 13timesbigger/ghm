@@ -44,7 +44,7 @@ pub async fn handle_observe(args: &ObserveArgs) -> Result<()> {
     let repo_name = parse_repo_identifier(repo_input)?;
 
     let _config = load_default_config().context(
-        "Failed to load configuration. Run 'ghm auth configure' first.",
+        "Failed to load configuration. Run 'ghad auth configure' first.",
     )?;
 
     let watch_issues = args.issues;

@@ -5,12 +5,12 @@ use ghm_core::github::projects;
 
 use crate::output::{self, ProjectRow};
 
-/// Handle the `ghm project list` command.
+/// Handle the `ghad project list` command.
 ///
 /// Lists GitHub Projects (v2), optionally filtered by organization.
 pub async fn handle_list(org: Option<String>) -> Result<()> {
     let config = load_default_config().context(
-        "Failed to load configuration. Run 'ghm auth configure' first.",
+        "Failed to load configuration. Run 'ghad auth configure' first.",
     )?;
 
     let label = match &org {
