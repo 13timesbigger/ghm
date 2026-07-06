@@ -1,6 +1,7 @@
 use crate::error::{GhadError, Result};
 use crate::github::client::GithubClient;
 use crate::models::GithubOrg;
+use std::collections::BTreeMap;
 
 /// List organisations the authenticated user belongs to.
 pub async fn list_orgs(client: &GithubClient) -> Result<Vec<GithubOrg>> {
@@ -24,7 +25,7 @@ pub async fn list_orgs(client: &GithubClient) -> Result<Vec<GithubOrg>> {
                 message: format!("failed to paginate orgs: {e}"),
             })?;
 
-    let orgs = memberships
+    let orgs: Vec<GithubOrg> = memberships
         .into_iter()
         .map(|m| {
             let org = m.organization;
@@ -36,7 +37,42 @@ pub async fn list_orgs(client: &GithubClient) -> Result<Vec<GithubOrg>> {
             }
         })
         .collect();
+
+    if orgs.is_empty() {
+        return list_orgs_from_accessible_repos(client).await;
+    }
+
     Ok(orgs)
+}
+
+async fn list_orgs_from_accessible_repos(client: &GithubClient) -> Result<Vec<GithubOrg>> {
+    let current_user = client
+        .octocrab()
+        .current()
+        .user()
+        .await
+        .map_err(|e| GhadError::GitHubApi {
+            message: format!("failed to fetch current user: {e}"),
+        })?;
+    let repos = crate::github::repos::list_repos(client).await?;
+    let mut orgs = BTreeMap::new();
+
+    for repo in repos {
+        let Some((owner, _)) = repo.full_name.split_once('/') else {
+            continue;
+        };
+        if owner.eq_ignore_ascii_case(&current_user.login) {
+            continue;
+        }
+        orgs.entry(owner.to_string()).or_insert_with(|| GithubOrg {
+            login: owner.to_string(),
+            id: 0,
+            description: Some("Inferred from accessible repositories".to_string()),
+            avatar_url: None,
+        });
+    }
+
+    Ok(orgs.into_values().collect())
 }
 
 #[cfg(test)]
