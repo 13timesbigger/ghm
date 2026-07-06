@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use dialoguer::{Password, Select};
 use std::collections::BTreeSet;
+use std::process::Command;
 use tokio::time::{sleep, Duration, Instant};
 
 use ghad_core::github::auth::{
@@ -89,6 +90,10 @@ async fn configure_device_flow() -> Result<()> {
     };
     sp.finish_and_clear();
 
+    match open_url_in_default_browser(&device.verification_uri) {
+        Ok(()) => output::print_info("Opened GitHub Device Flow in your default browser."),
+        Err(err) => output::print_warning(&format!("Could not open browser automatically: {err}")),
+    }
     output::print_info("Open this URL in your browser:");
     println!("{}", device.verification_uri);
     output::print_info("Enter this code:");
@@ -161,6 +166,23 @@ fn resolve_device_client_id() -> String {
     }
 
     DEFAULT_DEVICE_CLIENT_ID.to_string()
+}
+
+fn open_url_in_default_browser(url: &str) -> Result<()> {
+    let status = if cfg!(target_os = "macos") {
+        Command::new("open").arg(url).status()
+    } else if cfg!(target_os = "windows") {
+        Command::new("cmd").args(["/C", "start", "", url]).status()
+    } else {
+        Command::new("xdg-open").arg(url).status()
+    }
+    .context("failed to launch browser command")?;
+
+    if !status.success() {
+        anyhow::bail!("browser command exited with status {status}");
+    }
+
+    Ok(())
 }
 
 fn validate_granted_device_scopes(granted_scope: Option<&str>) -> Result<()> {
