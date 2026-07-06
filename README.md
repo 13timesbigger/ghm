@@ -42,11 +42,11 @@ ghad auth configure
 ```
 This will save your configuration to `~/.config/ghad/config.json`.
 
-`ghad auth configure` supports:
-- **Personal Access Token (PAT)**: use this if you want to provide your own GitHub token.
-- **GitHub App Installation**: use this if you want GitHub to prompt for the account, organization, and repositories to grant to GHAAD.
-
-For GitHub App installation auth, create a GitHub App with the repository permissions GHAAD needs, then run `ghad auth configure` and select `GitHub App Installation`. The command opens the GitHub App installation page in your default browser so you can choose the account or organization and either all repositories or selected repositories.
+`ghad auth configure` supports GitHub App installation auth only. Create a GitHub
+App with the repository permissions GHAAD needs, then run `ghad auth configure`.
+The command opens the GitHub App installation page in your default browser so you
+can choose the account or organization and either all repositories or selected
+repositories.
 
 You can prefill the interactive prompts with environment variables:
 ```bash
@@ -70,9 +70,7 @@ ghad issue list --org myorg
 ```
 
 With GitHub App installation auth, `ghad repo list` shows repositories granted to
-the selected installation. With PAT auth, repository and organization listing
-requires GitHub scopes that match the data you want to read: `repo`, `read:org`,
-and `read:project`.
+the selected installation.
 
 ### Observation and Agents
 To add a repository to the watch list:

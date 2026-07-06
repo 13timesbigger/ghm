@@ -192,6 +192,6 @@ mod tests {
         let config = load_config(&path).unwrap();
         assert_eq!(config.github_token, Some("tok".into()));
         assert_eq!(config.default_poll_interval_secs, 30);
-        assert_eq!(config.auth_method, AuthMethod::PersonalAccessToken);
+        assert_eq!(config.auth_method, AuthMethod::GitHubAppInstallation);
     }
 }

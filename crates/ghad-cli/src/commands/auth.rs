@@ -1,9 +1,8 @@
 use anyhow::{Context, Result};
-use dialoguer::{Input, Password, Select};
+use dialoguer::{Input, Select};
 use std::path::Path;
 use std::process::Command;
 
-use ghad_core::github::auth::{validate_pat_format, verify_pat};
 use ghad_core::github::client::list_github_app_installations;
 use ghad_core::models::{AuthMethod, Config, GitHubAppConfig};
 
@@ -16,61 +15,10 @@ const GITHUB_APP_INSTALLATION_ID_ENV: &str = "GHAD_GITHUB_APP_INSTALLATION_ID";
 
 /// Handle the `ghad auth configure` command.
 ///
-/// Interactively prompts the user for authentication method and credentials.
+/// Interactively configures GitHub App installation authentication.
 pub async fn handle_configure() -> Result<()> {
     println!("🔐 GHAAD — Authentication Setup\n");
-
-    let methods = vec!["Personal Access Token (PAT)", "GitHub App Installation"];
-    let selection = Select::new()
-        .with_prompt("Select authentication method")
-        .items(&methods)
-        .default(0)
-        .interact()
-        .context("Failed to get user selection")?;
-
-    match selection {
-        0 => configure_pat().await,
-        1 => configure_github_app_installation().await,
-        _ => unreachable!(),
-    }
-}
-
-/// Configure authentication via Personal Access Token.
-async fn configure_pat() -> Result<()> {
-    println!("\nA Personal Access Token requires the following scopes:");
-    println!("  • repo (Full control of private repositories)");
-    println!("  • read:org (Read org membership)");
-    println!("  • read:project (Read project boards)\n");
-
-    let token: String = Password::new()
-        .with_prompt("Enter your GitHub Personal Access Token")
-        .interact()
-        .context("Failed to read token input")?;
-
-    if token.trim().is_empty() {
-        anyhow::bail!("Token cannot be empty");
-    }
-
-    validate_pat_format(token.trim()).context("Invalid GitHub Personal Access Token")?;
-
-    let sp = output::spinner("Validating token...");
-    let login = match verify_pat(token.trim()).await {
-        Ok(login) => login,
-        Err(err) => {
-            sp.finish_and_clear();
-            return Err(err).context("GitHub rejected the provided token");
-        }
-    };
-
-    save_token(token.trim(), AuthMethod::PersonalAccessToken)?;
-
-    sp.finish_and_clear();
-    output::print_success(&format!("Authentication successful for @{login}!"));
-
-    let config_path = ghad_core::config::default_config_path()?;
-    output::print_info(&format!("Configuration saved to {}", config_path.display()));
-
-    Ok(())
+    configure_github_app_installation().await
 }
 
 /// Configure authentication via GitHub App installation.
@@ -225,15 +173,6 @@ async fn select_github_app_installation(app_id: u64, private_key_path: &str) -> 
         .context("Failed to select GitHub App installation")?;
 
     Ok(installations[selection].id)
-}
-
-fn save_token(token: &str, auth_method: AuthMethod) -> Result<()> {
-    let mut config = ghad_core::config::load_default_config().unwrap_or_default();
-    config.github_token = Some(token.to_string());
-    config.auth_method = auth_method;
-    config.github_app = None;
-
-    save_config(config)
 }
 
 fn save_config(config: Config) -> Result<()> {

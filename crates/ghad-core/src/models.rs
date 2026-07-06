@@ -18,7 +18,7 @@ pub enum AuthMethod {
 
 impl Default for AuthMethod {
     fn default() -> Self {
-        Self::PersonalAccessToken
+        Self::GitHubAppInstallation
     }
 }
 
@@ -301,8 +301,8 @@ mod tests {
     // ── AuthMethod ─────────────────────────────────────────────────
 
     #[test]
-    fn auth_method_default_is_pat() {
-        assert_eq!(AuthMethod::default(), AuthMethod::PersonalAccessToken);
+    fn auth_method_default_is_github_app_installation() {
+        assert_eq!(AuthMethod::default(), AuthMethod::GitHubAppInstallation);
     }
 
     #[test]
@@ -393,7 +393,7 @@ mod tests {
     fn config_default() {
         let c = Config::default();
         assert!(c.github_token.is_none());
-        assert_eq!(c.auth_method, AuthMethod::PersonalAccessToken);
+        assert_eq!(c.auth_method, AuthMethod::GitHubAppInstallation);
         assert!(c.github_app.is_none());
         assert_eq!(c.default_poll_interval_secs, 30);
         assert!(c.default_working_dir.is_none());
@@ -441,7 +441,7 @@ mod tests {
         let json = r#"{}"#;
         let c: Config = serde_json::from_str(json).unwrap();
         assert_eq!(c.default_poll_interval_secs, 30);
-        assert_eq!(c.auth_method, AuthMethod::PersonalAccessToken);
+        assert_eq!(c.auth_method, AuthMethod::GitHubAppInstallation);
     }
 
     // ── ObservedRepo ───────────────────────────────────────────────

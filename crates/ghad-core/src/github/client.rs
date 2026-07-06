@@ -195,6 +195,7 @@ mod tests {
     async fn from_config_ok() {
         let config = Config {
             github_token: Some("ghp_abc".into()),
+            auth_method: AuthMethod::PersonalAccessToken,
             ..Default::default()
         };
         let client = GithubClient::from_config(&config).unwrap();
@@ -202,10 +203,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn from_config_missing_token() {
+    async fn from_config_missing_github_app_config() {
         let config = Config::default();
         let err = GithubClient::from_config(&config).unwrap_err();
-        assert!(err.to_string().contains("not configured"));
+        assert!(err.to_string().contains("github_app config is missing"));
     }
 
     #[tokio::test]
