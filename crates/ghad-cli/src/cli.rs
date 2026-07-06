@@ -158,13 +158,18 @@ pub enum RepoCommands {
     /// Displays a table of repositories with details including name,
     /// description, primary language, star count, and last updated time.
     ///
-    /// If --org is not specified, lists repositories for the authenticated user.
+    /// If --org and --all-orgs are not specified, lists repositories for the
+    /// authenticated user.
     List {
         /// Filter repositories by organization name.
         ///
         /// Example: --org mycompany
-        #[arg(long, short)]
+        #[arg(long, short, conflicts_with = "all_orgs")]
         org: Option<String>,
+
+        /// List repositories from every organization the authenticated user belongs to.
+        #[arg(long, conflicts_with = "org")]
+        all_orgs: bool,
     },
 }
 
@@ -463,8 +468,9 @@ mod tests {
     fn test_repo_list_no_filter() {
         let cli = Cli::try_parse_from(["ghad", "repo", "list"]).unwrap();
         match &cli.command {
-            Commands::Repo(RepoCommands::List { org }) => {
+            Commands::Repo(RepoCommands::List { org, all_orgs }) => {
                 assert!(org.is_none());
+                assert!(!all_orgs);
             }
             _ => panic!("Expected Repo List command"),
         }
@@ -474,8 +480,9 @@ mod tests {
     fn test_repo_list_with_org() {
         let cli = Cli::try_parse_from(["ghad", "repo", "list", "--org", "mycompany"]).unwrap();
         match &cli.command {
-            Commands::Repo(RepoCommands::List { org }) => {
+            Commands::Repo(RepoCommands::List { org, all_orgs }) => {
                 assert_eq!(org.as_deref(), Some("mycompany"));
+                assert!(!all_orgs);
             }
             _ => panic!("Expected Repo List command"),
         }
@@ -485,8 +492,21 @@ mod tests {
     fn test_repo_list_with_org_short() {
         let cli = Cli::try_parse_from(["ghad", "repo", "list", "-o", "mycompany"]).unwrap();
         match &cli.command {
-            Commands::Repo(RepoCommands::List { org }) => {
+            Commands::Repo(RepoCommands::List { org, all_orgs }) => {
                 assert_eq!(org.as_deref(), Some("mycompany"));
+                assert!(!all_orgs);
+            }
+            _ => panic!("Expected Repo List command"),
+        }
+    }
+
+    #[test]
+    fn test_repo_list_all_orgs() {
+        let cli = Cli::try_parse_from(["ghad", "repo", "list", "--all-orgs"]).unwrap();
+        match &cli.command {
+            Commands::Repo(RepoCommands::List { org, all_orgs }) => {
+                assert!(org.is_none());
+                assert!(*all_orgs);
             }
             _ => panic!("Expected Repo List command"),
         }

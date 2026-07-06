@@ -51,8 +51,8 @@ async fn run() -> Result<()> {
         }
 
         // ── Repo ───────────────────────────────────────────────────────
-        Commands::Repo(RepoCommands::List { org }) => {
-            commands::repo::handle_list(org).await?;
+        Commands::Repo(RepoCommands::List { org, all_orgs }) => {
+            commands::repo::handle_list(org, all_orgs).await?;
         }
 
         // ── Project ────────────────────────────────────────────────────

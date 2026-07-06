@@ -8,14 +8,23 @@ pub async fn list_orgs(client: &GithubClient) -> Result<Vec<GithubOrg>> {
         .octocrab()
         .current()
         .list_org_memberships_for_authenticated_user()
+        .per_page(100)
         .send()
         .await
         .map_err(|e| GhadError::GitHubApi {
             message: format!("failed to list orgs: {e}"),
         })?;
 
-    let orgs = page
-        .items
+    let memberships =
+        client
+            .octocrab()
+            .all_pages(page)
+            .await
+            .map_err(|e| GhadError::GitHubApi {
+                message: format!("failed to paginate orgs: {e}"),
+            })?;
+
+    let orgs = memberships
         .into_iter()
         .map(|m| {
             let org = m.organization;

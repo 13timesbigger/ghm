@@ -9,6 +9,9 @@ pub async fn list_repos(client: &GithubClient) -> Result<Vec<GithubRepo>> {
         .octocrab()
         .current()
         .list_repos_for_authenticated_user()
+        .visibility("all")
+        .affiliation("owner,collaborator,organization_member")
+        .type_("all")
         .sort("updated")
         .per_page(100)
         .send()
@@ -17,7 +20,15 @@ pub async fn list_repos(client: &GithubClient) -> Result<Vec<GithubRepo>> {
             message: format!("failed to list repos: {e}"),
         })?;
 
-    Ok(map_repos(page.items))
+    let repos = client
+        .octocrab()
+        .all_pages(page)
+        .await
+        .map_err(|e| GhadError::GitHubApi {
+            message: format!("failed to paginate repos: {e}"),
+        })?;
+
+    Ok(map_repos(repos))
 }
 
 /// List repositories belonging to a specific organisation.
@@ -26,6 +37,9 @@ pub async fn list_repos_by_org(client: &GithubClient, org: &str) -> Result<Vec<G
         .octocrab()
         .orgs(org)
         .list_repos()
+        .repo_type(params::repos::Type::All)
+        .sort(params::repos::Sort::Updated)
+        .direction(params::Direction::Descending)
         .per_page(100)
         .send()
         .await
@@ -33,7 +47,15 @@ pub async fn list_repos_by_org(client: &GithubClient, org: &str) -> Result<Vec<G
             message: format!("failed to list repos for org {org}: {e}"),
         })?;
 
-    Ok(map_repos(page.items))
+    let repos = client
+        .octocrab()
+        .all_pages(page)
+        .await
+        .map_err(|e| GhadError::GitHubApi {
+            message: format!("failed to paginate repos for org {org}: {e}"),
+        })?;
+
+    Ok(map_repos(repos))
 }
 
 fn map_repos(repos: Vec<octocrab::models::Repository>) -> Vec<GithubRepo> {

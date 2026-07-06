@@ -48,11 +48,18 @@ GitHub Device Flow is also supported. Select it during `ghad auth configure` to 
 You can list resources from GitHub using the CLI:
 ```bash
 ghad org list
+ghad repo list
+ghad repo list --all-orgs
 ghad repo list --org myorganization
 ghad project list
 ghad pr list --repo myorg/myrepo
 ghad issue list --org myorg
 ```
+
+Repository and organization listing requires GitHub OAuth scopes that match the data
+you want to read. The built-in Device Flow requests `repo`, `read:org`, and
+`read:project` so GHAAD can read private repositories, organization memberships,
+and GitHub Projects where the organization permits the OAuth app.
 
 ### Observation and Agents
 To add a repository to the watch list:
