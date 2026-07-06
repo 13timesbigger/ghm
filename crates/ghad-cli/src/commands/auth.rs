@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use dialoguer::{Password, Select};
+use std::collections::BTreeSet;
 use tokio::time::{sleep, Duration, Instant};
 
 use ghad_core::github::auth::{
@@ -110,11 +111,16 @@ async fn configure_device_flow() -> Result<()> {
         };
 
         if let Some(token) = token_response.access_token {
+            validate_granted_device_scopes(token_response.scope.as_deref())?;
             save_token(&token, AuthMethod::DeviceFlow)?;
             sp.finish_and_clear();
 
             let config_path = ghad_core::config::default_config_path()?;
             output::print_success("Authentication successful!");
+            output::print_info(&format!(
+                "Granted GitHub scopes: {}",
+                token_response.scope.as_deref().unwrap_or("(none)")
+            ));
             output::print_info(&format!("Configuration saved to {}", config_path.display()));
             return Ok(());
         }
@@ -157,6 +163,37 @@ fn resolve_device_client_id() -> String {
     DEFAULT_DEVICE_CLIENT_ID.to_string()
 }
 
+fn validate_granted_device_scopes(granted_scope: Option<&str>) -> Result<()> {
+    let granted = parse_scopes(granted_scope.unwrap_or_default());
+    let required = parse_scopes(DEVICE_FLOW_SCOPES);
+    let missing: Vec<_> = required.difference(&granted).cloned().collect();
+
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    let granted_display = if granted.is_empty() {
+        "(none)".to_string()
+    } else {
+        granted.into_iter().collect::<Vec<_>>().join(", ")
+    };
+
+    anyhow::bail!(
+        "GitHub did not grant the required OAuth scopes. Missing: {}. Granted: {}. Re-run 'ghad auth configure' and approve all requested scopes; if this is an organization repository, the organization may also need to approve the OAuth app.",
+        missing.join(", "),
+        granted_display
+    );
+}
+
+fn parse_scopes(scopes: &str) -> BTreeSet<String> {
+    scopes
+        .split(|ch: char| ch == ',' || ch.is_whitespace())
+        .map(str::trim)
+        .filter(|scope| !scope.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
 fn save_token(token: &str, auth_method: AuthMethod) -> Result<()> {
     let mut config = ghad_core::config::load_default_config().unwrap_or_default();
     config.github_token = Some(token.to_string());
@@ -164,4 +201,29 @@ fn save_token(token: &str, auth_method: AuthMethod) -> Result<()> {
 
     ghad_core::config::save_default_config(&config).context("Failed to save GitHub credentials")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_scopes_accepts_space_and_comma_separators() {
+        let scopes = parse_scopes("repo, read:org read:project");
+        assert!(scopes.contains("repo"));
+        assert!(scopes.contains("read:org"));
+        assert!(scopes.contains("read:project"));
+    }
+
+    #[test]
+    fn validate_granted_device_scopes_accepts_required_scopes() {
+        validate_granted_device_scopes(Some("repo read:org read:project")).unwrap();
+    }
+
+    #[test]
+    fn validate_granted_device_scopes_rejects_empty_scopes() {
+        let err = validate_granted_device_scopes(Some("")).unwrap_err();
+        assert!(err.to_string().contains("Missing:"));
+        assert!(err.to_string().contains("Granted: (none)"));
+    }
 }
