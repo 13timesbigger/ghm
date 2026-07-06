@@ -43,19 +43,43 @@ impl DaemonManager {
     pub async fn start(&self) -> Result<()> {
         let plist_path = LaunchdManager::default_plist_path()?;
         self.launchd.install_plist(&plist_path)?;
-        
+
         // Use launchctl to load/start it
-        let status = std::process::Command::new("launchctl")
+        let output = std::process::Command::new("launchctl")
             .arg("load")
             .arg("-w")
             .arg(&plist_path)
-            .status()
+            .output()
             .context("Failed to run launchctl load")?;
-            
-        if !status.success() {
-            anyhow::bail!("launchctl load failed with status: {}", status);
+
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let details = [stdout, stderr]
+                .into_iter()
+                .filter(|value| !value.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if details.is_empty() {
+                anyhow::bail!("launchctl load failed with status: {}", output.status);
+            }
+            anyhow::bail!(
+                "launchctl load failed with status: {}\n{}",
+                output.status,
+                details
+            );
         }
-        Ok(())
+
+        for _ in 0..20 {
+            if self.is_running() {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        anyhow::bail!(
+            "launchd accepted the daemon job, but the daemon did not report running. Check the daemon stderr log for details."
+        );
     }
 
     pub async fn stop(&self) -> Result<()> {

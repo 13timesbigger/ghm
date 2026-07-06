@@ -1,6 +1,10 @@
 use anyhow::{Context, Result};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use ghad_core::config::load_default_config;
+use ghad_core::daemon::poller::{shutdown_channel, Poller};
+use ghad_core::daemon::processor::EventProcessor;
 use ghad_core::daemon::DaemonManager;
 
 use crate::cli::DaemonCommands;
@@ -14,10 +18,7 @@ pub async fn handle_daemon(cmd: &DaemonCommands) -> Result<()> {
         DaemonCommands::Status => handle_status().await,
         DaemonCommands::Install => handle_install().await,
         DaemonCommands::Uninstall => handle_uninstall().await,
-        DaemonCommands::Run { config_dir: _ } => {
-            let manager = DaemonManager::new()?;
-            manager.start().await
-        },
+        DaemonCommands::Run { config_dir } => handle_run(config_dir.as_deref()).await,
     }
 }
 
@@ -58,8 +59,11 @@ async fn handle_stop() -> Result<()> {
     let manager = DaemonManager::new()?;
 
     if !manager.is_running() {
+        manager.stop().await.context("Failed to stop daemon")?;
         sp.finish_and_clear();
-        output::print_warning("Daemon is not currently running.");
+        output::print_warning(
+            "Daemon was not marked as running, but any installed launchd job was unloaded.",
+        );
         return Ok(());
     }
 
@@ -115,6 +119,53 @@ async fn handle_uninstall() -> Result<()> {
     output::print_success("Daemon service uninstalled.");
 
     Ok(())
+}
+
+/// Run the daemon polling loop in the foreground.
+async fn handle_run(config_dir: Option<&str>) -> Result<()> {
+    let config_dir = match config_dir {
+        Some(path) => PathBuf::from(path),
+        None => ghad_core::config::default_config_dir()?,
+    };
+
+    let (shutdown_tx, shutdown_rx) = shutdown_channel();
+    install_shutdown_handler(shutdown_tx);
+
+    let processor = Arc::new(EventProcessor::new(config_dir.clone()));
+    let mut poller = Poller::new(config_dir, None, shutdown_rx);
+    poller
+        .run(processor)
+        .await
+        .context("Daemon polling loop failed")
+}
+
+fn install_shutdown_handler(shutdown_tx: tokio::sync::watch::Sender<bool>) {
+    tokio::spawn(async move {
+        wait_for_shutdown_signal().await;
+        let _ = shutdown_tx.send(true);
+    });
+}
+
+#[cfg(unix)]
+async fn wait_for_shutdown_signal() {
+    use tokio::signal::unix::{signal, SignalKind};
+
+    let mut terminate = signal(SignalKind::terminate()).ok();
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {},
+        _ = async {
+            if let Some(signal) = terminate.as_mut() {
+                signal.recv().await;
+            } else {
+                std::future::pending::<()>().await;
+            }
+        } => {},
+    }
+}
+
+#[cfg(not(unix))]
+async fn wait_for_shutdown_signal() {
+    let _ = tokio::signal::ctrl_c().await;
 }
 
 /// Format a duration into a human-readable string.
