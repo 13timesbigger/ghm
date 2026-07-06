@@ -40,9 +40,9 @@ Before doing anything else, authenticate with GitHub using a Personal Access Tok
 ```bash
 ghad auth configure
 ```
-This will save your configuration to `~/.config/ghm/config.json`.
+This will save your configuration to `~/.config/ghad/config.json`.
 
-GitHub Device Flow is also supported. Select it during `ghad auth configure`, then enter a GitHub OAuth app client ID when prompted or set `GHM_GITHUB_CLIENT_ID` before running the command.
+GitHub Device Flow is also supported. Select it during `ghad auth configure`, then enter a GitHub OAuth app client ID when prompted or set `GHAD_GITHUB_CLIENT_ID` before running the command.
 
 ### Listing Resources
 You can list resources from GitHub using the CLI:
@@ -92,5 +92,5 @@ ghad daemon uninstall
 ```
 
 ## Architecture
-- `ghm-core`: The library handling GitHub API interactions (via Octocrab), state persistence, configuration, and the daemon polling engine.
-- `ghm-cli`: The command-line interface handling argument parsing (via Clap) and formatted table output (via Comfy-Table).
+- `ghad-core`: The library handling GitHub API interactions (via Octocrab), state persistence, configuration, and the daemon polling engine.
+- `ghad-cli`: The command-line interface handling argument parsing (via Clap) and formatted table output (via Comfy-Table).

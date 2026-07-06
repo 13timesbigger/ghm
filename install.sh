@@ -2,10 +2,10 @@
 set -eu
 
 BIN_NAME="ghad"
-PACKAGE_NAME="ghm-cli"
+PACKAGE_NAME="ghad-cli"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-GHM_REPO="${GHM_REPO:-corelmax/github-monitor}"
-GHM_REF="${GHM_REF:-main}"
+GHAD_REPO="${GHAD_REPO:-corelmax/github-monitor}"
+GHAD_REF="${GHAD_REF:-main}"
 
 usage() {
   cat <<EOF
@@ -23,10 +23,10 @@ Options:
 
 Environment:
   INSTALL_DIR  Install directory used when --dir is not provided
-  GHM_REPO     GitHub repository to download when run outside a checkout
-               (default: ${GHM_REPO})
-  GHM_REF      Branch, tag, or commit to download when run outside a checkout
-               (default: ${GHM_REF})
+  GHAD_REPO     GitHub repository to download when run outside a checkout
+               (default: ${GHAD_REPO})
+  GHAD_REF      Branch, tag, or commit to download when run outside a checkout
+               (default: ${GHAD_REF})
 EOF
 }
 
@@ -80,7 +80,7 @@ fi
 source_dir="$(pwd)"
 if [ ! -f "${source_dir}/Cargo.toml" ] || [ ! -d "${source_dir}/crates/${PACKAGE_NAME}" ]; then
   if [ "$build" -eq 0 ]; then
-    echo "error: --no-build can only be used from a ${GHM_REPO} checkout" >&2
+    echo "error: --no-build can only be used from a ${GHAD_REPO} checkout" >&2
     exit 1
   fi
 
@@ -92,15 +92,15 @@ if [ ! -f "${source_dir}/Cargo.toml" ] || [ ! -d "${source_dir}/crates/${PACKAGE
   fi
 
   archive="${tmpdir}/source.tar.gz"
-  archive_url="https://codeload.github.com/${GHM_REPO}/tar.gz/${GHM_REF}"
-  echo "Downloading ${GHM_REPO}@${GHM_REF}..."
+  archive_url="https://codeload.github.com/${GHAD_REPO}/tar.gz/${GHAD_REF}"
+  echo "Downloading ${GHAD_REPO}@${GHAD_REF}..."
 
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL "$archive_url" -o "$archive"
   elif command -v wget >/dev/null 2>&1; then
     wget -qO "$archive" "$archive_url"
   else
-    echo "error: curl or wget is required to download ${GHM_REPO}" >&2
+    echo "error: curl or wget is required to download ${GHAD_REPO}" >&2
     exit 1
   fi
 

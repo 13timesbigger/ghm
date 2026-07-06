@@ -612,7 +612,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ghm-cli"
+name = "ghad-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -622,7 +622,7 @@ dependencies = [
  "colored",
  "comfy-table",
  "dialoguer",
- "ghm-core",
+ "ghad-core",
  "indicatif",
  "predicates",
  "serde",
@@ -634,7 +634,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ghm-core"
+name = "ghad-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
