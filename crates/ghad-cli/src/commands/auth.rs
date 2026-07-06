@@ -101,7 +101,7 @@ fn open_url_in_default_browser(url: &str) -> Result<()> {
 fn env_value(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
-        .map(|value| value.trim().to_string())
+        .map(|value| trim_value(&value))
         .filter(|value| !value.is_empty())
 }
 
@@ -113,11 +113,19 @@ fn prompt_string(prompt: &str, default: Option<String>) -> Result<String> {
     let value = input
         .interact_text()
         .context(format!("Failed to read {prompt}"))?;
-    let value = value.trim().to_string();
+    trim_required_prompt_value(prompt, &value)
+}
+
+fn trim_required_prompt_value(prompt: &str, value: &str) -> Result<String> {
+    let value = trim_value(value);
     if value.is_empty() {
         anyhow::bail!("{prompt} cannot be empty");
     }
     Ok(value)
+}
+
+fn trim_value(value: &str) -> String {
+    value.trim().to_string()
 }
 
 fn prompt_u64(prompt: &str, default: Option<String>) -> Result<u64> {
@@ -190,7 +198,22 @@ mod tests {
     }
 
     #[test]
+    fn trim_required_prompt_value_trims_slug() {
+        let value = trim_required_prompt_value("GitHub App slug", "  gh-agents-dispatcher \n")
+            .unwrap();
+        assert_eq!(value, "gh-agents-dispatcher");
+    }
+
+    #[test]
+    fn trim_required_prompt_value_rejects_empty_after_trim() {
+        let err = trim_required_prompt_value("GitHub App slug", " \n\t ").unwrap_err();
+        assert!(err.to_string().contains("cannot be empty"));
+    }
+
+    #[test]
     fn prompt_u64_rejects_non_numeric_values() {
+        let value = trim_required_prompt_value("GitHub App ID", " 12345 ").unwrap();
+        assert_eq!(value.parse::<u64>().unwrap(), 12345);
         assert!("abc".parse::<u64>().is_err());
     }
 }
