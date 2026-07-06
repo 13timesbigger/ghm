@@ -42,7 +42,7 @@ ghad auth configure
 ```
 This will save your configuration to `~/.config/ghad/config.json`.
 
-GitHub Device Flow is also supported. Select it during `ghad auth configure`, then enter a GitHub OAuth app client ID when prompted or set `GHAD_GITHUB_CLIENT_ID` before running the command.
+GitHub Device Flow is also supported. Select it during `ghad auth configure`, then enter a GitHub OAuth App client ID when prompted or set `GHAD_GITHUB_CLIENT_ID` before running the command. Device Flow must be enabled in the OAuth App settings.
 
 ### Listing Resources
 You can list resources from GitHub using the CLI:

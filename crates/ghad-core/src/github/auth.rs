@@ -73,6 +73,49 @@ pub struct DeviceTokenResponse {
     pub error_description: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct OAuthErrorResponse {
+    error: Option<String>,
+    error_description: Option<String>,
+    error_uri: Option<String>,
+    message: Option<String>,
+}
+
+async fn oauth_error_message(resp: reqwest::Response) -> String {
+    let status = resp.status();
+    let body = match resp.text().await {
+        Ok(body) => body,
+        Err(err) => return format!("GitHub returned status {status}; failed to read body: {err}"),
+    };
+
+    format_oauth_error(status, &body)
+}
+
+fn format_oauth_error(status: reqwest::StatusCode, body: &str) -> String {
+    if let Ok(error) = serde_json::from_str::<OAuthErrorResponse>(&body) {
+        let mut parts = vec![format!("GitHub returned status {status}")];
+        if let Some(code) = error.error.filter(|value| !value.is_empty()) {
+            parts.push(code);
+        }
+        if let Some(description) = error.error_description.filter(|value| !value.is_empty()) {
+            parts.push(description);
+        }
+        if let Some(uri) = error.error_uri.filter(|value| !value.is_empty()) {
+            parts.push(uri);
+        }
+        if let Some(message) = error.message.filter(|value| !value.is_empty()) {
+            parts.push(message);
+        }
+        return parts.join(": ");
+    }
+
+    if body.trim().is_empty() {
+        format!("GitHub returned status {status}")
+    } else {
+        format!("GitHub returned status {status}: {}", body.trim())
+    }
+}
+
 /// Request a device code from GitHub for the OAuth Device Flow.
 pub async fn request_device_code(client_id: &str, scope: &str) -> Result<DeviceCodeResponse> {
     let client = reqwest::Client::new();
@@ -89,7 +132,7 @@ pub async fn request_device_code(client_id: &str, scope: &str) -> Result<DeviceC
 
     if !resp.status().is_success() {
         return Err(GhadError::DeviceFlow {
-            message: format!("GitHub returned status {}", resp.status()),
+            message: oauth_error_message(resp).await,
         });
     }
 
@@ -117,6 +160,12 @@ pub async fn poll_device_token(client_id: &str, device_code: &str) -> Result<Dev
         .map_err(|e| GhadError::DeviceFlow {
             message: e.to_string(),
         })?;
+
+    if !resp.status().is_success() {
+        return Err(GhadError::DeviceFlow {
+            message: oauth_error_message(resp).await,
+        });
+    }
 
     resp.json::<DeviceTokenResponse>()
         .await
@@ -201,6 +250,17 @@ mod tests {
         let resp: DeviceTokenResponse = serde_json::from_str(json).unwrap();
         assert!(resp.access_token.is_none());
         assert_eq!(resp.error, Some("authorization_pending".into()));
+    }
+
+    #[tokio::test]
+    async fn format_oauth_error_includes_github_body() {
+        let message = format_oauth_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":"device_flow_disabled","error_description":"Device Flow is not enabled"}"#,
+        );
+        assert!(message.contains("400 Bad Request"));
+        assert!(message.contains("device_flow_disabled"));
+        assert!(message.contains("Device Flow is not enabled"));
     }
 
     // Async tests against wiremock

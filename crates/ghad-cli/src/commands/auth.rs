@@ -80,7 +80,9 @@ async fn configure_device_flow() -> Result<()> {
         Ok(device) => device,
         Err(err) => {
             sp.finish_and_clear();
-            return Err(err).context("Failed to start GitHub Device Flow");
+            return Err(err).context(
+                "Failed to start GitHub Device Flow. Make sure you entered the OAuth App client ID, not the client secret, and that Device Flow is enabled in the app settings",
+            );
         }
     };
     sp.finish_and_clear();
@@ -151,11 +153,13 @@ fn resolve_device_client_id() -> Result<String> {
         return Ok(client_id);
     }
 
-    println!("\nGitHub Device Flow requires a GitHub OAuth app client ID.");
-    println!("You can also set it with {DEVICE_CLIENT_ID_ENV}.\n");
+    println!("\nGitHub Device Flow requires a GitHub OAuth App client ID.");
+    println!("Use the OAuth App client ID, not the client secret.");
+    println!("Device Flow must also be enabled in the app settings.");
+    println!("You can set the client ID with {DEVICE_CLIENT_ID_ENV}.\n");
 
     let client_id: String = Input::new()
-        .with_prompt("Enter your GitHub OAuth app client ID")
+        .with_prompt("Enter your GitHub OAuth App client ID")
         .interact_text()
         .context("Failed to read GitHub OAuth app client ID")?;
 
