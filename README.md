@@ -15,9 +15,15 @@ Install the `ghm` binary into `/usr/local/bin`:
 ./install.sh
 ```
 
+Or install directly from GitHub:
+```bash
+curl -fsSL https://raw.githubusercontent.com/corelmax/github-monitor/main/install.sh | sh
+```
+
 To install somewhere else, pass `--dir` or set `INSTALL_DIR`:
 ```bash
 ./install.sh --dir "$HOME/.local/bin"
+curl -fsSL https://raw.githubusercontent.com/corelmax/github-monitor/main/install.sh | sh -s -- --dir "$HOME/.local/bin"
 ```
 
 You can also build the binary manually using Cargo:
