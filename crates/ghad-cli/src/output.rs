@@ -281,10 +281,7 @@ pub fn print_issues_table(issues: &[IssueRow]) {
     }
 
     println!("{table}");
-    println!(
-        "{}",
-        format!("Total: {} issue(s)", issues.len()).dimmed()
-    );
+    println!("{}", format!("Total: {} issue(s)", issues.len()).dimmed());
 }
 
 // ── Observed Repos Table ──────────────────────────────────────────────
@@ -295,6 +292,7 @@ pub struct ObservedRow {
     pub watch_issues: bool,
     pub watch_prs: bool,
     pub agent: String,
+    pub working_dir: String,
     pub prompt: String,
 }
 
@@ -303,8 +301,7 @@ pub fn print_observed_table(observed: &[ObservedRow]) {
     if observed.is_empty() {
         println!(
             "{}",
-            "No observed repositories. Use 'ghad observe <repo>' to start watching."
-                .yellow()
+            "No observed repositories. Use 'ghad observe <repo>' to start watching.".yellow()
         );
         return;
     }
@@ -316,6 +313,7 @@ pub fn print_observed_table(observed: &[ObservedRow]) {
         header("Issues"),
         header("PRs"),
         header("Agent"),
+        header("Working Dir"),
         header("Prompt"),
     ]);
 
@@ -337,6 +335,7 @@ pub fn print_observed_table(observed: &[ObservedRow]) {
                 Color::DarkGrey
             }),
             Cell::new(&obs.agent),
+            Cell::new(truncate(&obs.working_dir, MAX_CELL_WIDTH)),
             Cell::new(truncate(&obs.prompt, MAX_CELL_WIDTH)),
         ]);
     }
@@ -385,10 +384,7 @@ pub fn print_prompts_table(prompts: &[PromptRow]) {
     }
 
     println!("{table}");
-    println!(
-        "{}",
-        format!("Total: {} prompt(s)", prompts.len()).dimmed()
-    );
+    println!("{}", format!("Total: {} prompt(s)", prompts.len()).dimmed());
 }
 
 // ── Daemon Status ─────────────────────────────────────────────────────
@@ -605,6 +601,7 @@ mod tests {
             watch_issues: true,
             watch_prs: false,
             agent: "claude".to_string(),
+            working_dir: "/work/myorg/myrepo".to_string(),
             prompt: "Review for security".to_string(),
         };
         assert!(row.watch_issues);
@@ -730,6 +727,7 @@ mod tests {
             watch_issues: true,
             watch_prs: true,
             agent: "claude".to_string(),
+            working_dir: "/work/org/repo".to_string(),
             prompt: "Review everything".to_string(),
         }];
         print_observed_table(&observed);

@@ -30,13 +30,13 @@ fn load_json<T: serde::de::DeserializeOwned + Default>(path: &Path) -> Result<T>
         return Ok(T::default());
     }
     let data = std::fs::read_to_string(path).map_err(|e| GhadError::StoreRead { source: e })?;
-    let value: T =
-        serde_json::from_str(&data).map_err(|e| GhadError::StoreParse { source: e })?;
+    let value: T = serde_json::from_str(&data).map_err(|e| GhadError::StoreParse { source: e })?;
     Ok(value)
 }
 
 fn save_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
-    let json = serde_json::to_string_pretty(value).map_err(|e| GhadError::StoreParse { source: e })?;
+    let json =
+        serde_json::to_string_pretty(value).map_err(|e| GhadError::StoreParse { source: e })?;
     atomic_write(path, json.as_bytes())
 }
 
@@ -83,6 +83,24 @@ impl ObservedStore {
         {
             return Ok(false);
         }
+        repos.repositories.push(repo);
+        self.save(&repos)?;
+        Ok(true)
+    }
+
+    /// Add or replace a repo by full_name. Returns true if added, false if updated.
+    pub fn upsert_repo(&self, repo: crate::models::ObservedRepo) -> Result<bool> {
+        let mut repos = self.load()?;
+        if let Some(existing) = repos
+            .repositories
+            .iter_mut()
+            .find(|r| r.full_name == repo.full_name)
+        {
+            *existing = repo;
+            self.save(&repos)?;
+            return Ok(false);
+        }
+
         repos.repositories.push(repo);
         self.save(&repos)?;
         Ok(true)
@@ -199,17 +217,9 @@ impl StateStore {
     }
 
     /// Record that we have seen a set of issue/PR IDs for a repo.
-    pub fn mark_seen(
-        &self,
-        repo_full_name: &str,
-        issue_ids: &[u64],
-        pr_ids: &[u64],
-    ) -> Result<()> {
+    pub fn mark_seen(&self, repo_full_name: &str, issue_ids: &[u64], pr_ids: &[u64]) -> Result<()> {
         let mut state = self.load()?;
-        let entry = state
-            .repos
-            .entry(repo_full_name.to_string())
-            .or_default();
+        let entry = state.repos.entry(repo_full_name.to_string()).or_default();
         for id in issue_ids {
             if !entry.seen.issue_ids.contains(id) {
                 entry.seen.issue_ids.push(*id);
@@ -313,6 +323,7 @@ mod tests {
                 watch_prs: true,
                 agent: None,
                 prompt: None,
+                working_dir: None,
                 poll_interval_secs: None,
                 added_at: Utc::now(),
             }],
@@ -334,6 +345,7 @@ mod tests {
             watch_prs: true,
             agent: Some(AgentType::Codex),
             prompt: None,
+            working_dir: None,
             poll_interval_secs: None,
             added_at: Utc::now(),
         };
@@ -342,6 +354,36 @@ mod tests {
         assert!(!store.add_repo(repo).unwrap());
         let repos = store.load().unwrap();
         assert_eq!(repos.repositories.len(), 1);
+    }
+
+    #[test]
+    fn observed_store_upsert_repo_updates_existing() {
+        let tmp = TempDir::new().unwrap();
+        let store = ObservedStore::new(tmp.path());
+        let mut repo = ObservedRepo {
+            full_name: "x/y".into(),
+            url: "https://github.com/x/y".into(),
+            watch_issues: true,
+            watch_prs: true,
+            agent: Some(AgentType::Codex),
+            prompt: None,
+            working_dir: None,
+            poll_interval_secs: None,
+            added_at: Utc::now(),
+        };
+
+        assert!(store.upsert_repo(repo.clone()).unwrap());
+        repo.watch_prs = false;
+        repo.working_dir = Some(PathBuf::from("/work/x/y"));
+
+        assert!(!store.upsert_repo(repo).unwrap());
+        let repos = store.load().unwrap();
+        assert_eq!(repos.repositories.len(), 1);
+        assert!(!repos.repositories[0].watch_prs);
+        assert_eq!(
+            repos.repositories[0].working_dir,
+            Some(PathBuf::from("/work/x/y"))
+        );
     }
 
     #[test]
@@ -355,6 +397,7 @@ mod tests {
             watch_prs: false,
             agent: None,
             prompt: None,
+            working_dir: None,
             poll_interval_secs: None,
             added_at: Utc::now(),
         };

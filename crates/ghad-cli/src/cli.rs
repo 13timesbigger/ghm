@@ -257,6 +257,7 @@ pub enum IssueCommands {
         Use 'ghad observe list' to view currently observed repositories.\n\n\
         Examples:\n  \
         ghad observe myorg/myrepo --issues --prs\n  \
+        ghad observe myorg/myrepo --working-dir /path/to/local/checkout --codex\n  \
         ghad observe myorg/myrepo --prompt \"Review for security\" --claude\n  \
         ghad observe list"
 )]
@@ -282,6 +283,12 @@ pub struct ObserveArgs {
     /// Example: --prompt "Review this for security vulnerabilities"
     #[arg(long, short)]
     pub prompt: Option<String>,
+
+    /// Local working directory for the repository checkout.
+    ///
+    /// Agent commands run from this directory when processing this repository.
+    #[arg(long)]
+    pub working_dir: Option<std::path::PathBuf>,
 
     /// Use OpenAI Codex as the AI agent.
     #[arg(long, group = "agent")]
@@ -453,7 +460,10 @@ mod tests {
     #[test]
     fn test_auth_configure() {
         let cli = Cli::try_parse_from(["ghad", "auth", "configure"]).unwrap();
-        assert!(matches!(cli.command, Commands::Auth(AuthCommands::Configure)));
+        assert!(matches!(
+            cli.command,
+            Commands::Auth(AuthCommands::Configure)
+        ));
     }
 
     #[test]
@@ -546,9 +556,8 @@ mod tests {
 
     #[test]
     fn test_pr_list_with_repo_and_org() {
-        let cli =
-            Cli::try_parse_from(["ghad", "pr", "list", "--repo", "myrepo", "--org", "myorg"])
-                .unwrap();
+        let cli = Cli::try_parse_from(["ghad", "pr", "list", "--repo", "myrepo", "--org", "myorg"])
+            .unwrap();
         match &cli.command {
             Commands::Pr(PrCommands::List { repo, org }) => {
                 assert_eq!(repo.as_deref(), Some("myrepo"));
@@ -600,10 +609,7 @@ mod tests {
         let cli = Cli::try_parse_from(["ghad", "observe", "list"]).unwrap();
         match &cli.command {
             Commands::Observe(args) => {
-                assert!(matches!(
-                    args.subcommand,
-                    Some(ObserveSubcommands::List)
-                ));
+                assert!(matches!(args.subcommand, Some(ObserveSubcommands::List)));
             }
             _ => panic!("Expected Observe command"),
         }
@@ -639,15 +645,31 @@ mod tests {
     }
 
     #[test]
-    fn test_observe_agent_mutual_exclusivity() {
-        // Cannot specify both --claude and --codex
-        let result = Cli::try_parse_from([
+    fn test_observe_with_working_dir() {
+        let cli = Cli::try_parse_from([
             "ghad",
             "observe",
             "myorg/myrepo",
-            "--claude",
-            "--codex",
-        ]);
+            "--working-dir",
+            "/tmp/myrepo",
+        ])
+        .unwrap();
+        match &cli.command {
+            Commands::Observe(args) => {
+                assert_eq!(
+                    args.working_dir.as_deref(),
+                    Some(std::path::Path::new("/tmp/myrepo"))
+                );
+            }
+            _ => panic!("Expected Observe command"),
+        }
+    }
+
+    #[test]
+    fn test_observe_agent_mutual_exclusivity() {
+        // Cannot specify both --claude and --codex
+        let result =
+            Cli::try_parse_from(["ghad", "observe", "myorg/myrepo", "--claude", "--codex"]);
         assert!(result.is_err());
     }
 
@@ -664,8 +686,7 @@ mod tests {
 
     #[test]
     fn test_observe_agent_codex() {
-        let cli =
-            Cli::try_parse_from(["ghad", "observe", "myorg/myrepo", "--codex"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "observe", "myorg/myrepo", "--codex"]).unwrap();
         match &cli.command {
             Commands::Observe(args) => {
                 assert_eq!(args.agent(), Some("codex"));
@@ -676,8 +697,7 @@ mod tests {
 
     #[test]
     fn test_observe_agent_agy() {
-        let cli =
-            Cli::try_parse_from(["ghad", "observe", "myorg/myrepo", "--agy"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "observe", "myorg/myrepo", "--agy"]).unwrap();
         match &cli.command {
             Commands::Observe(args) => {
                 assert_eq!(args.agent(), Some("agy"));
@@ -688,8 +708,7 @@ mod tests {
 
     #[test]
     fn test_observe_agent_copilot() {
-        let cli =
-            Cli::try_parse_from(["ghad", "observe", "myorg/myrepo", "--copilot"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "observe", "myorg/myrepo", "--copilot"]).unwrap();
         match &cli.command {
             Commands::Observe(args) => {
                 assert_eq!(args.agent(), Some("copilot"));
@@ -701,8 +720,7 @@ mod tests {
     #[test]
     fn test_prompt_global() {
         let cli =
-            Cli::try_parse_from(["ghad", "prompt", "--global", "Check all the things"])
-                .unwrap();
+            Cli::try_parse_from(["ghad", "prompt", "--global", "Check all the things"]).unwrap();
         match &cli.command {
             Commands::Prompt(args) => {
                 assert!(args.global);
@@ -758,9 +776,7 @@ mod tests {
     #[test]
     fn test_prompt_scope_mutual_exclusivity() {
         // Cannot specify both --issue and --pr
-        let result = Cli::try_parse_from([
-            "ghad", "prompt", "--issue", "--pr", "do stuff",
-        ]);
+        let result = Cli::try_parse_from(["ghad", "prompt", "--issue", "--pr", "do stuff"]);
         assert!(result.is_err());
     }
 
@@ -817,8 +833,7 @@ mod tests {
 
     #[test]
     fn test_format_json() {
-        let cli =
-            Cli::try_parse_from(["ghad", "--format", "json", "org", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["ghad", "--format", "json", "org", "list"]).unwrap();
         assert!(matches!(cli.format, OutputFormat::Json));
     }
 

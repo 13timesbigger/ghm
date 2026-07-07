@@ -75,13 +75,18 @@ the selected installation.
 ### Observation and Agents
 To add a repository to the watch list:
 ```bash
-ghad observe myorg/myrepo --issues --prs --prompt "Check for bugs" --claude
+ghad observe myorg/myrepo --issues --prs --working-dir /path/to/myrepo --prompt "Check for bugs" --claude
 ```
 
 List your observed repositories:
 ```bash
 ghad observe list
 ```
+
+When an agent is configured for an observed repository, GHAAD runs the agent from
+that repository's `--working-dir`. If no repository working directory is set, it
+falls back to the global configured working directory, then the GHAAD config
+directory.
 
 Manage default prompts for the agents:
 ```bash

@@ -135,6 +135,8 @@ pub struct ObservedRepo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_dir: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub poll_interval_secs: Option<u64>,
     pub added_at: DateTime<Utc>,
 }
@@ -455,6 +457,7 @@ mod tests {
             watch_prs: false,
             agent: Some(AgentType::Claude),
             prompt: Some("fix bugs".into()),
+            working_dir: Some(PathBuf::from("/work/owner/repo")),
             poll_interval_secs: Some(60),
             added_at: Utc::now(),
         };
@@ -463,6 +466,7 @@ mod tests {
         assert_eq!(back.full_name, "owner/repo");
         assert!(!back.watch_prs);
         assert_eq!(back.agent, Some(AgentType::Claude));
+        assert_eq!(back.working_dir, Some(PathBuf::from("/work/owner/repo")));
     }
 
     #[test]
@@ -496,6 +500,7 @@ mod tests {
                 watch_prs: true,
                 agent: None,
                 prompt: None,
+                working_dir: None,
                 poll_interval_secs: None,
                 added_at: Utc::now(),
             }],

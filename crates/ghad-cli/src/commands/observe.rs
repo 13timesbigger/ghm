@@ -36,16 +36,12 @@ fn parse_repo_identifier(input: &str) -> Result<String> {
 }
 
 pub async fn handle_observe(args: &ObserveArgs) -> Result<()> {
-    let repo_input = args
-        .repo
-        .as_ref()
-        .context("Repository name is required")?;
+    let repo_input = args.repo.as_ref().context("Repository name is required")?;
 
     let repo_name = parse_repo_identifier(repo_input)?;
 
-    let _config = load_default_config().context(
-        "Failed to load configuration. Run 'ghad auth configure' first.",
-    )?;
+    let _config = load_default_config()
+        .context("Failed to load configuration. Run 'ghad auth configure' first.")?;
 
     let watch_issues = args.issues;
     let watch_prs = args.prs;
@@ -57,6 +53,19 @@ pub async fn handle_observe(args: &ObserveArgs) -> Result<()> {
         _ => unreachable!(),
     });
     let prompt = args.prompt.clone();
+    let working_dir = args
+        .working_dir
+        .as_ref()
+        .map(|path| {
+            if !path.is_dir() {
+                anyhow::bail!(
+                    "Working directory does not exist or is not a directory: {}",
+                    path.display()
+                );
+            }
+            Ok(path.clone())
+        })
+        .transpose()?;
 
     let (watch_issues, watch_prs) = if !watch_issues && !watch_prs {
         (true, true)
@@ -64,7 +73,10 @@ pub async fn handle_observe(args: &ObserveArgs) -> Result<()> {
         (watch_issues, watch_prs)
     };
 
-    let sp = output::spinner(&format!("Adding '{}' to observed repositories...", repo_name));
+    let sp = output::spinner(&format!(
+        "Saving '{}' in observed repositories...",
+        repo_name
+    ));
 
     let config_dir = ghad_core::config::default_config_dir()?;
     let store = ObservedStore::new(&config_dir);
@@ -75,19 +87,21 @@ pub async fn handle_observe(args: &ObserveArgs) -> Result<()> {
         watch_prs,
         agent,
         prompt: prompt.clone(),
+        working_dir: working_dir.clone(),
         poll_interval_secs: None,
         added_at: chrono::Utc::now(),
     };
-    
-    if !store.add_repo(observed).context("Failed to save observed repos")? {
-        sp.finish_and_clear();
-        output::print_warning(&format!("Repository '{}' is already being observed", repo_name));
-        return Ok(());
-    }
+    let added = store
+        .upsert_repo(observed)
+        .context("Failed to save observed repos")?;
 
     sp.finish_and_clear();
 
-    output::print_success(&format!("Now observing '{}'", repo_name));
+    if added {
+        output::print_success(&format!("Now observing '{}'", repo_name));
+    } else {
+        output::print_success(&format!("Updated observed repository '{}'", repo_name));
+    }
     if watch_issues {
         output::print_info("  • Watching issues");
     }
@@ -100,6 +114,9 @@ pub async fn handle_observe(args: &ObserveArgs) -> Result<()> {
     if let Some(ref p) = prompt {
         output::print_info(&format!("  • Prompt: {}", p));
     }
+    if let Some(path) = working_dir {
+        output::print_info(&format!("  • Working dir: {}", path.display()));
+    }
 
     Ok(())
 }
@@ -109,14 +126,24 @@ pub async fn handle_list() -> Result<()> {
     let store = ObservedStore::new(&config_dir);
     let repos = store.load().unwrap_or_default();
 
-    let rows: Vec<ObservedRow> = repos.repositories
+    let rows: Vec<ObservedRow> = repos
+        .repositories
         .iter()
         .map(|obs| ObservedRow {
             repo: obs.full_name.clone(),
             watch_issues: obs.watch_issues,
             watch_prs: obs.watch_prs,
-            agent: obs.agent.as_ref().map(|a| format!("{:?}", a)).unwrap_or_else(|| "—".to_string()),
+            agent: obs
+                .agent
+                .as_ref()
+                .map(|a| format!("{:?}", a))
+                .unwrap_or_else(|| "—".to_string()),
             prompt: obs.prompt.clone().unwrap_or_default(),
+            working_dir: obs
+                .working_dir
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "—".to_string()),
         })
         .collect();
 
@@ -137,29 +164,25 @@ mod tests {
 
     #[test]
     fn test_parse_repo_https_url() {
-        let result =
-            parse_repo_identifier("https://github.com/myorg/myrepo").unwrap();
+        let result = parse_repo_identifier("https://github.com/myorg/myrepo").unwrap();
         assert_eq!(result, "myorg/myrepo");
     }
 
     #[test]
     fn test_parse_repo_https_url_trailing_slash() {
-        let result =
-            parse_repo_identifier("https://github.com/myorg/myrepo/").unwrap();
+        let result = parse_repo_identifier("https://github.com/myorg/myrepo/").unwrap();
         assert_eq!(result, "myorg/myrepo");
     }
 
     #[test]
     fn test_parse_repo_https_url_git_suffix() {
-        let result =
-            parse_repo_identifier("https://github.com/myorg/myrepo.git").unwrap();
+        let result = parse_repo_identifier("https://github.com/myorg/myrepo.git").unwrap();
         assert_eq!(result, "myorg/myrepo");
     }
 
     #[test]
     fn test_parse_repo_http_url() {
-        let result =
-            parse_repo_identifier("http://github.com/myorg/myrepo").unwrap();
+        let result = parse_repo_identifier("http://github.com/myorg/myrepo").unwrap();
         assert_eq!(result, "myorg/myrepo");
     }
 

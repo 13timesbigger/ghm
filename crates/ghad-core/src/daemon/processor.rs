@@ -23,13 +23,12 @@ impl EventProcessor {
     }
 
     /// Process a single observed repo: check for new issues/PRs and dispatch agents.
-    pub async fn process_repo(
-        &self,
-        repo: &ObservedRepo,
-        state_store: &StateStore,
-    ) -> Result<()> {
+    pub async fn process_repo(&self, repo: &ObservedRepo, state_store: &StateStore) -> Result<()> {
         if !repo.watch_issues && !repo.watch_prs {
-            tracing::debug!("Skipping {} because no event types are watched", repo.full_name);
+            tracing::debug!(
+                "Skipping {} because no event types are watched",
+                repo.full_name
+            );
             return Ok(());
         }
 
@@ -94,7 +93,10 @@ impl EventProcessor {
 
         let mut handled_pr_ids = Vec::new();
         for pr in new_prs {
-            if self.handle_pr(repo, pr, pr_prompt.as_deref(), &config).await {
+            if self
+                .handle_pr(repo, pr, pr_prompt.as_deref(), &config)
+                .await
+            {
                 handled_pr_ids.push(pr.id);
             }
         }
@@ -126,10 +128,7 @@ impl EventProcessor {
             return true;
         };
 
-        let working_dir = config
-            .default_working_dir
-            .as_deref()
-            .unwrap_or(&self.config_dir);
+        let working_dir = self.working_dir(repo, config);
         let context = self.build_issue_context(issue, prompt);
         let dispatcher = AgentDispatcher::with_paths(config.agent_paths.clone());
         match dispatcher.dispatch(agent, working_dir, &context).await {
@@ -176,10 +175,7 @@ impl EventProcessor {
             return true;
         };
 
-        let working_dir = config
-            .default_working_dir
-            .as_deref()
-            .unwrap_or(&self.config_dir);
+        let working_dir = self.working_dir(repo, config);
         let context = self.build_pr_context(pr, prompt);
         let dispatcher = AgentDispatcher::with_paths(config.agent_paths.clone());
         match dispatcher.dispatch(agent, working_dir, &context).await {
@@ -204,12 +200,20 @@ impl EventProcessor {
         }
     }
 
+    /// Resolve the working directory for agent dispatch.
+    fn working_dir<'a>(
+        &'a self,
+        repo: &'a ObservedRepo,
+        config: &'a crate::models::Config,
+    ) -> &'a std::path::Path {
+        repo.working_dir
+            .as_deref()
+            .or(config.default_working_dir.as_deref())
+            .unwrap_or(&self.config_dir)
+    }
+
     /// Build a context string for an issue to send to an agent.
-    pub fn build_issue_context(
-        &self,
-        issue: &GithubIssue,
-        prompt: Option<&str>,
-    ) -> String {
+    pub fn build_issue_context(&self, issue: &GithubIssue, prompt: Option<&str>) -> String {
         let mut ctx = format!(
             "Repository: {}\nIssue #{}: {}\nState: {}\nAuthor: {}\nURL: {}\n",
             issue.repo_full_name,
@@ -232,19 +236,10 @@ impl EventProcessor {
     }
 
     /// Build a context string for a PR to send to an agent.
-    pub fn build_pr_context(
-        &self,
-        pr: &GithubPullRequest,
-        prompt: Option<&str>,
-    ) -> String {
+    pub fn build_pr_context(&self, pr: &GithubPullRequest, prompt: Option<&str>) -> String {
         let mut ctx = format!(
             "Repository: {}\nPR #{}: {}\nState: {}\nAuthor: {}\nURL: {}\n",
-            pr.repo_full_name,
-            pr.number,
-            pr.title,
-            pr.state,
-            pr.user_login,
-            pr.html_url,
+            pr.repo_full_name, pr.number, pr.title, pr.state, pr.user_login, pr.html_url,
         );
         if let Some(body) = &pr.body {
             ctx.push_str(&format!("\nBody:\n{}\n", body));
@@ -262,11 +257,11 @@ impl EventProcessor {
 }
 
 fn parse_repo_full_name(full_name: &str) -> Result<(&str, &str)> {
-    let (owner, repo) = full_name.split_once('/').ok_or_else(|| {
-        GhadError::PollError {
+    let (owner, repo) = full_name
+        .split_once('/')
+        .ok_or_else(|| GhadError::PollError {
             message: format!("invalid repository name '{full_name}', expected owner/repo"),
-        }
-    })?;
+        })?;
     if owner.is_empty() || repo.is_empty() {
         return Err(GhadError::PollError {
             message: format!("invalid repository name '{full_name}', expected owner/repo"),
@@ -413,6 +408,7 @@ mod tests {
             watch_prs: false,
             agent: None,
             prompt: None,
+            working_dir: None,
             poll_interval_secs: None,
             added_at: Utc::now(),
         };
@@ -426,6 +422,38 @@ mod tests {
         assert!(parse_repo_full_name("owner").is_err());
         assert!(parse_repo_full_name("/repo").is_err());
         assert!(parse_repo_full_name("owner/").is_err());
+    }
+
+    #[test]
+    fn working_dir_prefers_repo_then_config_then_config_dir() {
+        let tmp = TempDir::new().unwrap();
+        let proc = make_processor(tmp.path());
+        let mut repo = ObservedRepo {
+            full_name: "test/repo".into(),
+            url: "https://github.com/test/repo".into(),
+            watch_issues: true,
+            watch_prs: true,
+            agent: None,
+            prompt: None,
+            working_dir: None,
+            poll_interval_secs: None,
+            added_at: Utc::now(),
+        };
+        let mut config = Config::default();
+
+        assert_eq!(proc.working_dir(&repo, &config), tmp.path());
+
+        config.default_working_dir = Some(PathBuf::from("/global/work"));
+        assert_eq!(
+            proc.working_dir(&repo, &config),
+            std::path::Path::new("/global/work")
+        );
+
+        repo.working_dir = Some(PathBuf::from("/repo/work"));
+        assert_eq!(
+            proc.working_dir(&repo, &config),
+            std::path::Path::new("/repo/work")
+        );
     }
 
     #[test]
