@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
+use crate::config;
 use crate::daemon::dispatcher::AgentDispatcher;
-use crate::error::Result;
+use crate::error::{GhadError, Result};
+use crate::github::{client::GithubClient, issues, pulls};
 use crate::models::{GithubIssue, GithubPullRequest, ObservedRepo};
 use crate::store::{PromptStore, StateStore};
 
@@ -26,27 +28,180 @@ impl EventProcessor {
         repo: &ObservedRepo,
         state_store: &StateStore,
     ) -> Result<()> {
+        if !repo.watch_issues && !repo.watch_prs {
+            tracing::debug!("Skipping {} because no event types are watched", repo.full_name);
+            return Ok(());
+        }
+
+        let (owner, name) = parse_repo_full_name(&repo.full_name)?;
         let prompt_store = PromptStore::new(&self.config_dir);
+        let config = config::load_config(&self.config_dir.join("config.json"))?;
+        let client = GithubClient::from_config(&config)?;
 
         // Determine what's new
         let seen_issues = state_store.seen_issue_ids(&repo.full_name)?;
         let seen_prs = state_store.seen_pr_ids(&repo.full_name)?;
 
-        // In a real implementation, we would call the GitHub API here.
-        // For now, we log and return — the actual fetching is done by the
-        // caller or integrated with the GithubClient.
-        tracing::debug!(
-            "Processing {}: seen {} issues, {} PRs",
+        let fetched_issues = if repo.watch_issues {
+            issues::list_issues(&client, owner, name).await?
+        } else {
+            Vec::new()
+        };
+        let fetched_prs = if repo.watch_prs {
+            pulls::list_pulls(&client, owner, name).await?
+        } else {
+            Vec::new()
+        };
+
+        let new_issues: Vec<_> = fetched_issues
+            .iter()
+            .filter(|issue| !seen_issues.contains(&issue.id))
+            .collect();
+        let new_prs: Vec<_> = fetched_prs
+            .iter()
+            .filter(|pr| !seen_prs.contains(&pr.id))
+            .collect();
+
+        tracing::info!(
+            "Processing {}: fetched {} issues, {} PRs; seen {} issues, {} PRs; new {} issues, {} PRs",
             repo.full_name,
+            fetched_issues.len(),
+            fetched_prs.len(),
             seen_issues.len(),
-            seen_prs.len()
+            seen_prs.len(),
+            new_issues.len(),
+            new_prs.len()
         );
 
-        // Resolve prompts
-        let _issue_prompt = prompt_store.resolve_issue_prompt(&repo.full_name)?;
-        let _pr_prompt = prompt_store.resolve_pr_prompt(&repo.full_name)?;
+        let issue_prompt = repo
+            .prompt
+            .clone()
+            .or(prompt_store.resolve_issue_prompt(&repo.full_name)?);
+        let pr_prompt = repo
+            .prompt
+            .clone()
+            .or(prompt_store.resolve_pr_prompt(&repo.full_name)?);
+
+        let mut handled_issue_ids = Vec::new();
+        for issue in new_issues {
+            if self
+                .handle_issue(repo, issue, issue_prompt.as_deref(), &config)
+                .await
+            {
+                handled_issue_ids.push(issue.id);
+            }
+        }
+
+        let mut handled_pr_ids = Vec::new();
+        for pr in new_prs {
+            if self.handle_pr(repo, pr, pr_prompt.as_deref(), &config).await {
+                handled_pr_ids.push(pr.id);
+            }
+        }
+
+        state_store.mark_seen(&repo.full_name, &handled_issue_ids, &handled_pr_ids)?;
 
         Ok(())
+    }
+
+    async fn handle_issue(
+        &self,
+        repo: &ObservedRepo,
+        issue: &GithubIssue,
+        prompt: Option<&str>,
+        config: &crate::models::Config,
+    ) -> bool {
+        tracing::info!(
+            "Detected new issue {}#{}: {}",
+            repo.full_name,
+            issue.number,
+            issue.title
+        );
+        let Some(agent) = &repo.agent else {
+            tracing::info!(
+                "No agent configured for {}; marking issue #{} as seen",
+                repo.full_name,
+                issue.number
+            );
+            return true;
+        };
+
+        let working_dir = config
+            .default_working_dir
+            .as_deref()
+            .unwrap_or(&self.config_dir);
+        let context = self.build_issue_context(issue, prompt);
+        let dispatcher = AgentDispatcher::with_paths(config.agent_paths.clone());
+        match dispatcher.dispatch(agent, working_dir, &context).await {
+            Ok(child) => {
+                tracing::info!(
+                    "Dispatched issue {}#{} to {} (pid={:?})",
+                    repo.full_name,
+                    issue.number,
+                    agent,
+                    child.id()
+                );
+                true
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "Failed to dispatch issue {}#{}: {err}",
+                    repo.full_name,
+                    issue.number
+                );
+                false
+            }
+        }
+    }
+
+    async fn handle_pr(
+        &self,
+        repo: &ObservedRepo,
+        pr: &GithubPullRequest,
+        prompt: Option<&str>,
+        config: &crate::models::Config,
+    ) -> bool {
+        tracing::info!(
+            "Detected new PR {}#{}: {}",
+            repo.full_name,
+            pr.number,
+            pr.title
+        );
+        let Some(agent) = &repo.agent else {
+            tracing::info!(
+                "No agent configured for {}; marking PR #{} as seen",
+                repo.full_name,
+                pr.number
+            );
+            return true;
+        };
+
+        let working_dir = config
+            .default_working_dir
+            .as_deref()
+            .unwrap_or(&self.config_dir);
+        let context = self.build_pr_context(pr, prompt);
+        let dispatcher = AgentDispatcher::with_paths(config.agent_paths.clone());
+        match dispatcher.dispatch(agent, working_dir, &context).await {
+            Ok(child) => {
+                tracing::info!(
+                    "Dispatched PR {}#{} to {} (pid={:?})",
+                    repo.full_name,
+                    pr.number,
+                    agent,
+                    child.id()
+                );
+                true
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "Failed to dispatch PR {}#{}: {err}",
+                    repo.full_name,
+                    pr.number
+                );
+                false
+            }
+        }
     }
 
     /// Build a context string for an issue to send to an agent.
@@ -104,6 +259,20 @@ impl EventProcessor {
     pub fn dispatcher(&self) -> &AgentDispatcher {
         &self.dispatcher
     }
+}
+
+fn parse_repo_full_name(full_name: &str) -> Result<(&str, &str)> {
+    let (owner, repo) = full_name.split_once('/').ok_or_else(|| {
+        GhadError::PollError {
+            message: format!("invalid repository name '{full_name}', expected owner/repo"),
+        }
+    })?;
+    if owner.is_empty() || repo.is_empty() {
+        return Err(GhadError::PollError {
+            message: format!("invalid repository name '{full_name}', expected owner/repo"),
+        });
+    }
+    Ok((owner, repo))
 }
 
 #[cfg(test)]
@@ -233,23 +402,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn process_repo_no_crash() {
+    async fn process_repo_no_watches_no_crash() {
         let tmp = TempDir::new().unwrap();
         let proc = make_processor(tmp.path());
         let state_store = StateStore::new(tmp.path());
         let repo = ObservedRepo {
             full_name: "test/repo".into(),
             url: "https://github.com/test/repo".into(),
-            watch_issues: true,
-            watch_prs: true,
+            watch_issues: false,
+            watch_prs: false,
             agent: None,
             prompt: None,
             poll_interval_secs: None,
             added_at: Utc::now(),
         };
-        // Should succeed without error (no actual API calls)
         let result = proc.process_repo(&repo, &state_store).await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_repo_full_name_rejects_invalid_names() {
+        assert!(parse_repo_full_name("owner/repo").is_ok());
+        assert!(parse_repo_full_name("owner").is_err());
+        assert!(parse_repo_full_name("/repo").is_err());
+        assert!(parse_repo_full_name("owner/").is_err());
     }
 
     #[test]

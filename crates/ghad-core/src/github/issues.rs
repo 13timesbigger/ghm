@@ -20,9 +20,16 @@ pub async fn list_issues(
             message: format!("failed to list issues for {owner}/{repo}: {e}"),
         })?;
 
+    let issues = client
+        .octocrab()
+        .all_pages(page)
+        .await
+        .map_err(|e| GhadError::GitHubApi {
+            message: format!("failed to paginate issues for {owner}/{repo}: {e}"),
+        })?;
+
     let full_name = format!("{owner}/{repo}");
-    let issues = page
-        .items
+    let issues = issues
         .into_iter()
         // Filter out pull requests (GitHub API returns them as issues too)
         .filter(|i| i.pull_request.is_none())

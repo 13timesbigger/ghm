@@ -20,9 +20,16 @@ pub async fn list_pulls(
             message: format!("failed to list PRs for {owner}/{repo}: {e}"),
         })?;
 
+    let prs = client
+        .octocrab()
+        .all_pages(page)
+        .await
+        .map_err(|e| GhadError::GitHubApi {
+            message: format!("failed to paginate PRs for {owner}/{repo}: {e}"),
+        })?;
+
     let full_name = format!("{owner}/{repo}");
-    let prs = page
-        .items
+    let prs = prs
         .into_iter()
         .map(|pr| GithubPullRequest {
             id: pr.id.into_inner(),
