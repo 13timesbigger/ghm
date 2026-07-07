@@ -84,7 +84,7 @@ impl EventProcessor {
         let mut handled_issue_ids = Vec::new();
         for issue in new_issues {
             if self
-                .handle_issue(repo, issue, issue_prompt.as_deref(), &config)
+                .handle_issue(repo, issue, issue_prompt.as_deref(), &config, state_store)
                 .await
             {
                 handled_issue_ids.push(issue.id);
@@ -94,7 +94,7 @@ impl EventProcessor {
         let mut handled_pr_ids = Vec::new();
         for pr in new_prs {
             if self
-                .handle_pr(repo, pr, pr_prompt.as_deref(), &config)
+                .handle_pr(repo, pr, pr_prompt.as_deref(), &config, state_store)
                 .await
             {
                 handled_pr_ids.push(pr.id);
@@ -112,6 +112,7 @@ impl EventProcessor {
         issue: &GithubIssue,
         prompt: Option<&str>,
         config: &crate::models::Config,
+        state_store: &StateStore,
     ) -> bool {
         tracing::info!(
             "Detected new issue {}#{}: {}",
@@ -131,14 +132,33 @@ impl EventProcessor {
         let working_dir = self.working_dir(repo, config);
         let context = self.build_issue_context(issue, prompt);
         let dispatcher = AgentDispatcher::with_paths(config.agent_paths.clone());
+        let command_line = dispatcher.command_line(agent, working_dir, &context);
         match dispatcher.dispatch(agent, working_dir, &context).await {
             Ok(child) => {
+                let child_pid = child.id();
+                if let Err(err) = state_store.record_issue_dispatch(
+                    &repo.full_name,
+                    issue.id,
+                    issue.number,
+                    agent.clone(),
+                    command_line.clone(),
+                    working_dir.to_path_buf(),
+                    child_pid,
+                ) {
+                    tracing::warn!(
+                        "Failed to record dispatched command for issue {}#{}: {err}",
+                        repo.full_name,
+                        issue.number
+                    );
+                    return false;
+                }
                 tracing::info!(
-                    "Dispatched issue {}#{} to {} (pid={:?})",
+                    "Dispatched issue {}#{} to {} (pid={:?}): {}",
                     repo.full_name,
                     issue.number,
                     agent,
-                    child.id()
+                    child_pid,
+                    command_line
                 );
                 true
             }
@@ -159,6 +179,7 @@ impl EventProcessor {
         pr: &GithubPullRequest,
         prompt: Option<&str>,
         config: &crate::models::Config,
+        state_store: &StateStore,
     ) -> bool {
         tracing::info!(
             "Detected new PR {}#{}: {}",
@@ -178,14 +199,33 @@ impl EventProcessor {
         let working_dir = self.working_dir(repo, config);
         let context = self.build_pr_context(pr, prompt);
         let dispatcher = AgentDispatcher::with_paths(config.agent_paths.clone());
+        let command_line = dispatcher.command_line(agent, working_dir, &context);
         match dispatcher.dispatch(agent, working_dir, &context).await {
             Ok(child) => {
+                let child_pid = child.id();
+                if let Err(err) = state_store.record_pr_dispatch(
+                    &repo.full_name,
+                    pr.id,
+                    pr.number,
+                    agent.clone(),
+                    command_line.clone(),
+                    working_dir.to_path_buf(),
+                    child_pid,
+                ) {
+                    tracing::warn!(
+                        "Failed to record dispatched command for PR {}#{}: {err}",
+                        repo.full_name,
+                        pr.number
+                    );
+                    return false;
+                }
                 tracing::info!(
-                    "Dispatched PR {}#{} to {} (pid={:?})",
+                    "Dispatched PR {}#{} to {} (pid={:?}): {}",
                     repo.full_name,
                     pr.number,
                     agent,
-                    child.id()
+                    child_pid,
+                    command_line
                 );
                 true
             }

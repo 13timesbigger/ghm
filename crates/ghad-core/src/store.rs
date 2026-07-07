@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::error::{GhadError, Result};
-use crate::models::{DaemonState, ObservedRepos, Prompts};
+use crate::models::{AgentType, DaemonState, DispatchRecord, ObservedRepos, Prompts};
 
 /// File names for each store.
 const OBSERVED_FILE: &str = "observed.json";
@@ -231,6 +231,60 @@ impl StateStore {
             }
         }
         entry.last_poll = Some(chrono::Utc::now());
+        self.save(&state)
+    }
+
+    /// Record the command line used to dispatch an issue.
+    pub fn record_issue_dispatch(
+        &self,
+        repo_full_name: &str,
+        issue_id: u64,
+        number: u64,
+        agent: AgentType,
+        command: String,
+        working_dir: PathBuf,
+        child_pid: Option<u32>,
+    ) -> Result<()> {
+        let mut state = self.load()?;
+        let entry = state.repos.entry(repo_full_name.to_string()).or_default();
+        entry.dispatches.issue_commands.insert(
+            issue_id,
+            DispatchRecord {
+                number,
+                agent,
+                command,
+                working_dir,
+                child_pid,
+                dispatched_at: chrono::Utc::now(),
+            },
+        );
+        self.save(&state)
+    }
+
+    /// Record the command line used to dispatch a pull request.
+    pub fn record_pr_dispatch(
+        &self,
+        repo_full_name: &str,
+        pr_id: u64,
+        number: u64,
+        agent: AgentType,
+        command: String,
+        working_dir: PathBuf,
+        child_pid: Option<u32>,
+    ) -> Result<()> {
+        let mut state = self.load()?;
+        let entry = state.repos.entry(repo_full_name.to_string()).or_default();
+        entry.dispatches.pr_commands.insert(
+            pr_id,
+            DispatchRecord {
+                number,
+                agent,
+                command,
+                working_dir,
+                child_pid,
+                dispatched_at: chrono::Utc::now(),
+            },
+        );
         self.save(&state)
     }
 
@@ -590,6 +644,49 @@ mod tests {
         store.mark_seen("a/b", &[2, 3], &[10]).unwrap();
         let issues = store.seen_issue_ids("a/b").unwrap();
         assert_eq!(issues, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn state_store_records_dispatched_commands() {
+        let tmp = TempDir::new().unwrap();
+        let store = StateStore::new(tmp.path());
+
+        store
+            .record_issue_dispatch(
+                "a/b",
+                101,
+                7,
+                AgentType::Codex,
+                "'codex' '--cd' '/work' 'fix issue'".into(),
+                PathBuf::from("/work"),
+                Some(123),
+            )
+            .unwrap();
+        store
+            .record_pr_dispatch(
+                "a/b",
+                202,
+                8,
+                AgentType::Claude,
+                "'claude' '--add-dir' '/work' 'fix pr'".into(),
+                PathBuf::from("/work"),
+                Some(456),
+            )
+            .unwrap();
+
+        let state = store.load().unwrap();
+        let repo = state.repos.get("a/b").unwrap();
+        let issue = repo.dispatches.issue_commands.get(&101).unwrap();
+        assert_eq!(issue.number, 7);
+        assert_eq!(issue.agent, AgentType::Codex);
+        assert_eq!(issue.command, "'codex' '--cd' '/work' 'fix issue'");
+        assert_eq!(issue.child_pid, Some(123));
+
+        let pr = repo.dispatches.pr_commands.get(&202).unwrap();
+        assert_eq!(pr.number, 8);
+        assert_eq!(pr.agent, AgentType::Claude);
+        assert_eq!(pr.command, "'claude' '--add-dir' '/work' 'fix pr'");
+        assert_eq!(pr.child_pid, Some(456));
     }
 
     #[test]

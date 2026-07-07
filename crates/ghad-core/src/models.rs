@@ -192,11 +192,34 @@ pub struct SeenEvents {
     pub pr_ids: Vec<u64>,
 }
 
+/// Copy-runnable command line for a dispatched issue or pull request.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DispatchRecord {
+    pub number: u64,
+    pub agent: AgentType,
+    pub command: String,
+    pub working_dir: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub child_pid: Option<u32>,
+    pub dispatched_at: DateTime<Utc>,
+}
+
+/// Per-repo mapping of GitHub event IDs to dispatched commands.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct DispatchRecords {
+    #[serde(default)]
+    pub issue_commands: HashMap<u64, DispatchRecord>,
+    #[serde(default)]
+    pub pr_commands: HashMap<u64, DispatchRecord>,
+}
+
 /// Per-repo state entry.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct RepoSeenState {
     #[serde(default)]
     pub seen: SeenEvents,
+    #[serde(default)]
+    pub dispatches: DispatchRecords,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_poll: Option<DateTime<Utc>>,
 }
@@ -578,6 +601,8 @@ mod tests {
         let rss = RepoSeenState::default();
         assert!(rss.last_poll.is_none());
         assert!(rss.seen.issue_ids.is_empty());
+        assert!(rss.dispatches.issue_commands.is_empty());
+        assert!(rss.dispatches.pr_commands.is_empty());
     }
 
     // ── DaemonState ────────────────────────────────────────────────
@@ -600,6 +625,7 @@ mod tests {
                     issue_ids: vec![1, 2, 3],
                     pr_ids: vec![10],
                 },
+                dispatches: DispatchRecords::default(),
                 last_poll: Some(Utc::now()),
             },
         );
@@ -613,6 +639,27 @@ mod tests {
         let back: DaemonState = serde_json::from_str(&json).unwrap();
         assert_eq!(back.daemon_pid, Some(999));
         assert_eq!(back.repos["a/b"].seen.issue_ids, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn daemon_state_deserializes_without_dispatches() {
+        let json = r#"{
+            "repos": {
+                "a/b": {
+                    "seen": {
+                        "issue_ids": [1],
+                        "pr_ids": [2]
+                    }
+                }
+            }
+        }"#;
+
+        let state: DaemonState = serde_json::from_str(json).unwrap();
+        let repo = &state.repos["a/b"];
+        assert_eq!(repo.seen.issue_ids, vec![1]);
+        assert_eq!(repo.seen.pr_ids, vec![2]);
+        assert!(repo.dispatches.issue_commands.is_empty());
+        assert!(repo.dispatches.pr_commands.is_empty());
     }
 
     // ── GithubOrg ──────────────────────────────────────────────────

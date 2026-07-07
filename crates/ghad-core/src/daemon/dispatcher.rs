@@ -22,9 +22,7 @@ impl AgentDispatcher {
 
     /// Create a dispatcher with custom agent paths.
     pub fn with_paths(paths: AgentPaths) -> Self {
-        Self {
-            agent_paths: paths,
-        }
+        Self { agent_paths: paths }
     }
 
     /// Get the binary name/path for an agent.
@@ -46,12 +44,7 @@ impl AgentDispatcher {
     }
 
     /// Build the command-line arguments for the given agent type.
-    pub fn build_args(
-        &self,
-        agent: &AgentType,
-        working_dir: &Path,
-        prompt: &str,
-    ) -> Vec<String> {
+    pub fn build_args(&self, agent: &AgentType, working_dir: &Path, prompt: &str) -> Vec<String> {
         let dir = working_dir.to_string_lossy().to_string();
         match agent {
             AgentType::Codex => vec![
@@ -83,6 +76,15 @@ impl AgentDispatcher {
                 "--autopilot".into(),
             ],
         }
+    }
+
+    /// Build a shell-safe command line using the same binary and args as dispatch.
+    pub fn command_line(&self, agent: &AgentType, working_dir: &Path, prompt: &str) -> String {
+        std::iter::once(self.agent_binary(agent).to_string_lossy().to_string())
+            .chain(self.build_args(agent, working_dir, prompt))
+            .map(|part| shell_quote(&part))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     /// Dispatch an agent subprocess. Returns the child process handle.
@@ -160,6 +162,14 @@ fn agent_binary_candidates(agent: &AgentType) -> Vec<PathBuf> {
     candidates
 }
 
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+
+    format!("'{}'", value.replace('\'', r#"'\''"#))
+}
+
 impl Default for AgentDispatcher {
     fn default() -> Self {
         Self::new()
@@ -208,8 +218,14 @@ mod tests {
             ..Default::default()
         };
         let d = AgentDispatcher::with_paths(paths);
-        assert_eq!(d.agent_binary(&AgentType::Codex), PathBuf::from("/opt/codex"));
-        assert_eq!(d.agent_binary(&AgentType::Claude), PathBuf::from("/opt/claude"));
+        assert_eq!(
+            d.agent_binary(&AgentType::Codex),
+            PathBuf::from("/opt/codex")
+        );
+        assert_eq!(
+            d.agent_binary(&AgentType::Claude),
+            PathBuf::from("/opt/claude")
+        );
         assert_eq!(
             d.agent_binary(&AgentType::Agy)
                 .file_name()
@@ -235,6 +251,25 @@ mod tests {
     }
 
     #[test]
+    fn command_line_quotes_copy_runnable_shell_command() {
+        let paths = AgentPaths {
+            codex: Some(PathBuf::from("/Applications/Codex App/codex")),
+            ..Default::default()
+        };
+        let d = AgentDispatcher::with_paths(paths);
+        let command = d.command_line(
+            &AgentType::Codex,
+            Path::new("/work/owner repo"),
+            "fix owner's bug\nwith details",
+        );
+
+        assert_eq!(
+            command,
+            "'/Applications/Codex App/codex' '--cd' '/work/owner repo' '--yolo' '--model' 'gpt-5.5' 'fix owner'\\''s bug\nwith details'"
+        );
+    }
+
+    #[test]
     fn build_args_agy() {
         let d = AgentDispatcher::new();
         let args = d.build_args(&AgentType::Agy, Path::new("/project"), "review code");
@@ -256,7 +291,12 @@ mod tests {
         let args = d.build_args(&AgentType::Claude, Path::new("/src"), "analyze");
         assert_eq!(
             args,
-            vec!["--add-dir", "/src", "--dangerously-skip-permissions", "analyze"]
+            vec![
+                "--add-dir",
+                "/src",
+                "--dangerously-skip-permissions",
+                "analyze"
+            ]
         );
     }
 
