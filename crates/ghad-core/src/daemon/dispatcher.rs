@@ -29,27 +29,19 @@ impl AgentDispatcher {
 
     /// Get the binary name/path for an agent.
     pub fn agent_binary(&self, agent: &AgentType) -> PathBuf {
+        if let Some(path) = self.configured_binary(agent) {
+            return path;
+        }
+
+        resolve_agent_binary(agent).unwrap_or_else(|| PathBuf::from(default_binary_name(agent)))
+    }
+
+    fn configured_binary(&self, agent: &AgentType) -> Option<PathBuf> {
         match agent {
-            AgentType::Codex => self
-                .agent_paths
-                .codex
-                .clone()
-                .unwrap_or_else(|| PathBuf::from("codex")),
-            AgentType::Agy => self
-                .agent_paths
-                .agy
-                .clone()
-                .unwrap_or_else(|| PathBuf::from("agy")),
-            AgentType::Claude => self
-                .agent_paths
-                .claude
-                .clone()
-                .unwrap_or_else(|| PathBuf::from("claude")),
-            AgentType::Copilot => self
-                .agent_paths
-                .copilot
-                .clone()
-                .unwrap_or_else(|| PathBuf::from("copilot")),
+            AgentType::Codex => self.agent_paths.codex.clone(),
+            AgentType::Agy => self.agent_paths.agy.clone(),
+            AgentType::Claude => self.agent_paths.claude.clone(),
+            AgentType::Copilot => self.agent_paths.copilot.clone(),
         }
     }
 
@@ -104,8 +96,9 @@ impl AgentDispatcher {
         let args = self.build_args(agent, working_dir, prompt);
 
         tracing::info!(
-            "Dispatching {} with args: {:?}",
+            "Dispatching {} via {} with args: {:?}",
             agent,
+            binary.display(),
             args,
         );
 
@@ -123,6 +116,50 @@ impl AgentDispatcher {
     }
 }
 
+fn default_binary_name(agent: &AgentType) -> &'static str {
+    match agent {
+        AgentType::Codex => "codex",
+        AgentType::Agy => "agy",
+        AgentType::Claude => "claude",
+        AgentType::Copilot => "copilot",
+    }
+}
+
+fn resolve_agent_binary(agent: &AgentType) -> Option<PathBuf> {
+    agent_binary_candidates(agent).into_iter().find(|path| {
+        path.is_file()
+            || path
+                .metadata()
+                .map(|metadata| !metadata.is_dir())
+                .unwrap_or(false)
+    })
+}
+
+fn agent_binary_candidates(agent: &AgentType) -> Vec<PathBuf> {
+    let binary = default_binary_name(agent);
+    let mut candidates = Vec::new();
+
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join(binary)));
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(home.join(".local").join("bin").join(binary));
+        candidates.push(home.join(".cargo").join("bin").join(binary));
+    }
+
+    candidates.push(PathBuf::from("/usr/local/bin").join(binary));
+    candidates.push(PathBuf::from("/opt/homebrew/bin").join(binary));
+
+    if matches!(agent, AgentType::Codex) {
+        candidates.push(PathBuf::from(
+            "/Applications/Codex.app/Contents/Resources/codex",
+        ));
+    }
+
+    candidates
+}
+
 impl Default for AgentDispatcher {
     fn default() -> Self {
         Self::new()
@@ -137,10 +174,30 @@ mod tests {
     #[test]
     fn default_binary_names() {
         let d = AgentDispatcher::new();
-        assert_eq!(d.agent_binary(&AgentType::Codex), PathBuf::from("codex"));
-        assert_eq!(d.agent_binary(&AgentType::Agy), PathBuf::from("agy"));
-        assert_eq!(d.agent_binary(&AgentType::Claude), PathBuf::from("claude"));
-        assert_eq!(d.agent_binary(&AgentType::Copilot), PathBuf::from("copilot"));
+        assert_eq!(
+            d.agent_binary(&AgentType::Codex)
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("codex")
+        );
+        assert_eq!(
+            d.agent_binary(&AgentType::Agy)
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("agy")
+        );
+        assert_eq!(
+            d.agent_binary(&AgentType::Claude)
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("claude")
+        );
+        assert_eq!(
+            d.agent_binary(&AgentType::Copilot)
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("copilot")
+        );
     }
 
     #[test]
@@ -153,9 +210,18 @@ mod tests {
         let d = AgentDispatcher::with_paths(paths);
         assert_eq!(d.agent_binary(&AgentType::Codex), PathBuf::from("/opt/codex"));
         assert_eq!(d.agent_binary(&AgentType::Claude), PathBuf::from("/opt/claude"));
-        // Defaults for non-overridden
-        assert_eq!(d.agent_binary(&AgentType::Agy), PathBuf::from("agy"));
-        assert_eq!(d.agent_binary(&AgentType::Copilot), PathBuf::from("copilot"));
+        assert_eq!(
+            d.agent_binary(&AgentType::Agy)
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("agy")
+        );
+        assert_eq!(
+            d.agent_binary(&AgentType::Copilot)
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("copilot")
+        );
     }
 
     #[test]
@@ -214,7 +280,20 @@ mod tests {
     #[test]
     fn dispatcher_default_trait() {
         let d = AgentDispatcher::default();
-        assert_eq!(d.agent_binary(&AgentType::Codex), PathBuf::from("codex"));
+        assert_eq!(
+            d.agent_binary(&AgentType::Codex)
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("codex")
+        );
+    }
+
+    #[test]
+    fn codex_candidates_include_macos_app_path() {
+        let candidates = agent_binary_candidates(&AgentType::Codex);
+        assert!(candidates.contains(&PathBuf::from(
+            "/Applications/Codex.app/Contents/Resources/codex"
+        )));
     }
 
     #[tokio::test]
